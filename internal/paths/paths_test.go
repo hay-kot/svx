@@ -13,7 +13,6 @@ func TestXDGDirectories(t *testing.T) {
 	}{
 		{name: "config", envName: "XDG_CONFIG_HOME", resolve: ConfigDir},
 		{name: "data", envName: "XDG_DATA_HOME", resolve: DataDir},
-		{name: "cache", envName: "XDG_CACHE_HOME", resolve: CacheDir},
 	}
 
 	for _, test := range tests {

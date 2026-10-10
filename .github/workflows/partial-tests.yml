@@ -12,6 +12,9 @@ jobs:
       - name: Install tools
         uses: jdx/mise-action@v5
 
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
@@ -26,3 +29,17 @@ jobs:
 
       - name: Integration Tests
         run: mise run integration
+
+  macOS:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install tools
+        uses: jdx/mise-action@v5
+
+      - name: Build with the menu bar
+        run: CGO_ENABLED=1 go build ./... && CGO_ENABLED=1 go vet ./internal/adapters/menubar/
+
+      - name: Test
+        run: go test ./internal/adapters/menubar/

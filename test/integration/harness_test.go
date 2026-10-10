@@ -4,7 +4,8 @@ package integration
 
 import (
 	"context"
-	"errors"
+	"crypto/rand"
+	"encoding/hex"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,40 +14,72 @@ import (
 	"time"
 )
 
-const commandTimeout = 30 * time.Second
+const commandTimeout = 90 * time.Second
 
-// Harness runs the built CLI binary with isolated per-test state.
+// Harness runs the built CLI with isolated state: its own XDG directories,
+// its own state directory, and a private tmux server that cleanup kills. It
+// never touches the developer's tmux server or real state. Commands run as
+// if from a pane in the server's "work" session, since svx up needs tmux.
 type Harness struct {
 	t         *testing.T
 	homeDir   string
 	dataDir   string
 	cacheDir  string
 	configDir string
+	stateDir  string
+	socket    string
+	// tmuxEnv is TMUX and TMUX_PANE for a pane in the work session.
+	tmuxEnv []string
 }
 
-// NewHarness creates an integration test harness with isolated XDG directories.
+// NewHarness creates an integration test harness.
 func NewHarness(t *testing.T) *Harness {
 	t.Helper()
-
-	return &Harness{
+	buf := make([]byte, 6)
+	_, _ = rand.Read(buf)
+	h := &Harness{
 		t:         t,
 		homeDir:   t.TempDir(),
 		dataDir:   t.TempDir(),
 		cacheDir:  t.TempDir(),
 		configDir: t.TempDir(),
+		stateDir:  t.TempDir(),
+		socket:    "svx-test-" + hex.EncodeToString(buf),
 	}
+	t.Cleanup(func() {
+		// tmux leaves its socket file behind when the server exits.
+		socket, _ := exec.Command("tmux", "-L", h.socket, "display-message", "-p", "#{socket_path}").Output() //nolint:gosec,noctx // cleanup runs after the test context ends
+		_ = exec.Command("tmux", "-L", h.socket, "kill-server").Run()                                         //nolint:gosec,noctx // cleanup runs after the test context ends
+		if path := strings.TrimSpace(string(socket)); path != "" {
+			_ = os.Remove(path)
+		}
+	})
+	// The server's environment is what svx's windows inherit, so it starts
+	// with the same isolated environment as the CLI.
+	start := exec.CommandContext(t.Context(), "tmux", "-L", h.socket, "-f", "/dev/null", //nolint:gosec // the harness private socket
+		"new-session", "-d", "-s", "work", "-P", "-F", "#{socket_path}|#{pane_id}", "sleep", "3600")
+	start.Env = h.env()
+	out, err := start.CombinedOutput()
+	if err != nil {
+		t.Fatalf("starting the harness tmux session: %v\n%s", err, string(out))
+	}
+	socketPath, pane, _ := strings.Cut(strings.TrimSpace(string(out)), "|")
+	h.tmuxEnv = []string{"TMUX=" + socketPath + ",1,0", "TMUX_PANE=" + pane}
+	return h
 }
 
-// Run executes the CLI and returns combined stdout/stderr output.
-func (h *Harness) Run(args ...string) (string, error) {
+// StackWindows lists the stack tag of every window on the private server.
+func (h *Harness) StackWindows() string {
 	h.t.Helper()
-	cmd := h.command(args...)
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	out, err := h.Tmux("list-windows", "-a", "-F", "#{@svx_stack}")
+	if err != nil {
+		h.t.Fatalf("list-windows: %v\n%s", err, out)
+	}
+	return out
 }
 
-// RunInDir executes the CLI from dir and returns combined stdout/stderr output.
-func (h *Harness) RunInDir(dir string, args ...string) (string, error) {
+// Run executes the CLI from dir and returns combined stdout/stderr output.
+func (h *Harness) Run(dir string, args ...string) (string, error) {
 	h.t.Helper()
 	cmd := h.command(args...)
 	cmd.Dir = dir
@@ -54,33 +87,29 @@ func (h *Harness) RunInDir(dir string, args ...string) (string, error) {
 	return string(out), err
 }
 
-// RunStdout executes the CLI and returns stdout only.
-func (h *Harness) RunStdout(args ...string) (string, error) {
+// Stdout executes the CLI from dir and returns stdout only.
+func (h *Harness) Stdout(dir string, args ...string) (string, error) {
 	h.t.Helper()
 	cmd := h.command(args...)
+	cmd.Dir = dir
 	out, err := cmd.Output()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
-			h.t.Logf("stderr from svx %v: %s", args, exitErr.Stderr)
-		}
-	}
 	return string(out), err
 }
 
-// RunWithStdin executes the CLI with stdin and returns stdout only.
-func (h *Harness) RunWithStdin(input string, args ...string) (string, error) {
-	h.t.Helper()
-	cmd := h.command(args...)
-	cmd.Stdin = strings.NewReader(input)
-	out, err := cmd.Output()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
-			h.t.Logf("stderr from svx %v: %s", args, exitErr.Stderr)
-		}
-	}
+// Tmux runs tmux against the harness's private server.
+func (h *Harness) Tmux(args ...string) (string, error) {
+	out, err := exec.CommandContext(h.t.Context(), "tmux", append([]string{"-L", h.socket}, args...)...).CombinedOutput() //nolint:gosec // the harness private socket
 	return string(out), err
+}
+
+// CopySample copies testdata/sample into a new directory.
+func (h *Harness) CopySample(name string) string {
+	h.t.Helper()
+	dst := filepath.Join(h.t.TempDir(), name)
+	if err := os.CopyFS(dst, os.DirFS("../../testdata/sample")); err != nil {
+		h.t.Fatal(err)
+	}
+	return dst
 }
 
 func (h *Harness) command(args ...string) *exec.Cmd {
@@ -89,8 +118,13 @@ func (h *Harness) command(args ...string) *exec.Cmd {
 	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 	h.t.Cleanup(cancel)
 
-	cmd := exec.CommandContext(ctx, cliBin, args...)
-	cmd.Env = []string{
+	cmd := exec.CommandContext(ctx, cliBin, args...) //nolint:gosec // the binary under test
+	cmd.Env = append(h.env(), h.tmuxEnv...)
+	return cmd
+}
+
+func (h *Harness) env() []string {
+	return []string{
 		"PATH=" + os.Getenv("PATH"),
 		"TMPDIR=" + os.Getenv("TMPDIR"),
 		"TERM=" + os.Getenv("TERM"),
@@ -98,9 +132,11 @@ func (h *Harness) command(args ...string) *exec.Cmd {
 		"XDG_DATA_HOME=" + h.dataDir,
 		"XDG_CACHE_HOME=" + h.cacheDir,
 		"XDG_CONFIG_HOME=" + h.configDir,
-		"LOG_LEVEL=debug",
+		"SVX_STATE_DIR=" + h.stateDir,
+		"SVX_TMUX_SOCKET=" + h.socket,
+		"SVX_TMUX_CONFIG=/dev/null",
+		"LOG_LEVEL=info",
 		"LOG_FILE=" + filepath.Join(h.dataDir, "svx.log"),
 		"NO_COLOR=1",
 	}
-	return cmd
 }

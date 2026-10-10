@@ -1,0 +1,36 @@
+# A small project for trying svx and for the end-to-end tests. Both servers
+# are python3's built-in http.server, so nothing needs installing.
+project: sample
+
+settings:
+  port_stride: 10
+
+vars:
+  db_name: 'sample_{{ snake .stack.name }}'
+
+env:
+  DATABASE_NAME: '{{ .vars.db_name }}'
+
+services:
+  migrate:
+    run: 'echo "migrating $DATABASE_NAME"'
+    oneshot: true
+
+  api:
+    run: 'python3 -m http.server {{ .port }} --bind 127.0.0.1'
+    port: 18080
+    depends: [migrate]
+    ready: { http: /, timeout: 20s }
+    links: { API: / }
+
+  web:
+    run: 'echo "api is at $API_URL"; exec python3 -m http.server {{ .port }} --bind 127.0.0.1'
+    port: 15173
+    depends: [api]
+    env:
+      API_URL: '{{ url "api" }}'
+    links: { App: / }
+
+  worker:
+    run: 'while true; do echo "working on {{ .vars.db_name }}"; sleep 5; done'
+    autostart: false

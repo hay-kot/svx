@@ -18,11 +18,6 @@ func DataDir() (string, error) {
 	return appDir("XDG_DATA_HOME", ".local", "share")
 }
 
-// CacheDir returns the XDG cache directory for the application.
-func CacheDir() (string, error) {
-	return appDir("XDG_CACHE_HOME", ".cache")
-}
-
 func appDir(envName string, fallbackParts ...string) (string, error) {
 	if dir := os.Getenv(envName); dir != "" {
 		return filepath.Join(dir, appName), nil
@@ -35,4 +30,14 @@ func appDir(envName string, fallbackParts ...string) (string, error) {
 
 	parts := append([]string{home}, fallbackParts...)
 	return filepath.Join(append(parts, appName)...), nil
+}
+
+// StateDir returns svx's state directory: SVX_STATE_DIR when set, else
+// $XDG_STATE_HOME/svx, else ~/.local/state/svx. macOS uses the same default
+// as Linux, so other tools find the records in one place.
+func StateDir() (string, error) {
+	if dir := os.Getenv("SVX_STATE_DIR"); dir != "" {
+		return dir, nil
+	}
+	return appDir("XDG_STATE_HOME", ".local", "state")
 }

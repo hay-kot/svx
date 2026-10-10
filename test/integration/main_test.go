@@ -16,12 +16,18 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "skipping integration tests: CLI_INTEGRATION=1 not set (run via mise run integration)")
 		os.Exit(0)
 	}
-
-	path, err := exec.LookPath("svx")
-	if err != nil {
-		panic("svx binary not found in PATH; build it first")
+	if _, err := exec.LookPath("tmux"); err != nil {
+		panic("tmux not found in PATH; the integration tests drive a real tmux")
 	}
-	cliBin = path
+
+	cliBin = os.Getenv("SVX_BIN")
+	if cliBin == "" {
+		path, err := exec.LookPath("svx")
+		if err != nil {
+			panic("svx binary not found; set SVX_BIN or put it on PATH")
+		}
+		cliBin = path
+	}
 
 	os.Exit(m.Run())
 }

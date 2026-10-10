@@ -8,12 +8,20 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
 
+	"github.com/hay-kot/svx/internal/adapters/readiness"
+	"github.com/hay-kot/svx/internal/adapters/statefs"
+	"github.com/hay-kot/svx/internal/adapters/system"
+	"github.com/hay-kot/svx/internal/adapters/tmux"
+	"github.com/hay-kot/svx/internal/adapters/yamlproject"
+	"github.com/hay-kot/svx/internal/app"
 	"github.com/hay-kot/svx/internal/commands"
 	"github.com/hay-kot/svx/internal/config"
 	"github.com/hay-kot/svx/internal/paths"
@@ -88,10 +96,12 @@ func run() int {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	flags := &commands.Flags{}
+	deps := &commands.Deps{}
+	status := commands.NewStatusCmd(flags, deps)
 
-	app := &cli.Command{
+	root := &cli.Command{
 		Name:                  "svx",
-		Usage:                 `a tmux based dev stack starter and stopper`,
+		Usage:                 "run a repo's dev services as windows in a tmux session, one session per stack",
 		Version:               build(),
 		EnableShellCompletion: true,
 		Flags: []cli.Flag{
@@ -156,20 +166,31 @@ func run() int {
 				return ctx, err
 			}
 
-			return ctx, nil
+			return ctx, wire(deps, cfg)
 		},
+		Action: status.Run,
 	}
-	app = commands.NewUpCmd(flags).Register(app)
-	app = commands.NewDownCmd(flags).Register(app)
-	app = commands.NewDoctorCmd(flags).Register(app)
-	app = commands.NewInitCmd(flags).Register(app)
-	app = commands.NewListCmd(flags).Register(app)
+	root = commands.NewUpCmd(flags, deps).Register(root)
+	root = commands.NewDownCmd(flags, deps).Register(root)
+	root = status.Register(root)
+	root = commands.NewLsCmd(flags, deps).Register(root)
+	root = commands.NewAttachCmd(flags, deps).Register(root)
+	root = commands.NewRestartCmd(flags, deps).Register(root)
+	root = commands.NewLogsCmd(flags, deps).Register(root)
+	root = commands.NewEnvCmd(flags, deps).Register(root)
+	root = commands.NewExecCmd(flags, deps).Register(root)
+	root = commands.NewOpenCmd(flags, deps).Register(root)
+	root = commands.NewConfigCmd(flags, deps).Register(root)
+	root = commands.NewBarCmd(flags, deps).Register(root)
+	root = commands.NewInitCmd(flags, deps).Register(root)
+	root = commands.NewDoctorCmd(flags, deps).Register(root)
+	root = commands.NewRunCmd(flags, deps).Register(root)
 	// +scaffold:command:register
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := app.Run(ctx, os.Args); err != nil {
+	if err := root.Run(ctx, os.Args); err != nil {
 		colorRed := "\033[38;2;215;95;107m"
 		colorGray := "\033[38;2;163;163;163m"
 		colorReset := "\033[0m"
@@ -183,8 +204,58 @@ func run() int {
 			colorRed, colorReset, colorGray, err.Error(), colorReset,
 			colorRed, colorReset,
 		)
-		return 1
+		return app.ExitCode(err)
 	}
 
 	return 0
+}
+
+// wire builds the adapters and the use cases on top of them.
+func wire(deps *commands.Deps, cfg config.Config) error {
+	stateDir, err := paths.StateDir()
+	if err != nil {
+		return fmt.Errorf("resolve state directory: %w", err)
+	}
+	store, err := statefs.New(stateDir)
+	if err != nil {
+		return err
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("finding svx's own path: %w", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+
+	mux := tmux.FromEnv()
+	deps.Config = cfg
+	deps.App = &app.App{
+		Projects:   yamlproject.Repository{},
+		Store:      store,
+		Mux:        mux,
+		Signals:    system.Signals{},
+		Ports:      system.Ports{},
+		Ready:      readiness.New(),
+		Files:      system.Files{},
+		Browser:    system.Browser{},
+		Secrets:    system.ResolveSecret,
+		Environ:    environ,
+		Now:        time.Now,
+		Executable: exe,
+		Poll:       0,
+		Events:     nil,
+	}
+	return nil
+}
+
+func environ() map[string]string {
+	env := map[string]string{}
+	for _, kv := range os.Environ() {
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			env[k] = v
+		}
+	}
+	return env
 }
