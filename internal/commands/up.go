@@ -3,11 +3,8 @@ package commands
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/urfave/cli/v3"
 
@@ -45,9 +42,11 @@ func (cmd *UpCmd) Register(app *cli.Command) *cli.Command {
 
 func (cmd *UpCmd) run(ctx context.Context, c *cli.Command) error {
 	st := newStyle(os.Stdout, cmd.flags.NoColor)
-	a := withProgress(cmd.deps.App, os.Stderr, newStyle(os.Stderr, cmd.flags.NoColor))
+	a, finish := withProgress(cmd.deps.App, os.Stderr, cmd.flags.NoColor)
+	defer finish()
 
 	result, err := a.Up(ctx, app.UpRequest{Target: cmd.stack.target(), Services: c.Args().Slice(), NoWait: cmd.noWait})
+	finish()
 	if result.Stack.ID.Project == "" {
 		return err
 	}
@@ -73,45 +72,4 @@ func (cmd *UpCmd) run(ctx context.Context, c *cli.Command) error {
 		return cmd.deps.App.Attach(ctx, cmd.stack.target(), "")
 	}
 	return nil
-}
-
-// withProgress returns a copy of a that prints progress lines to w.
-func withProgress(a *app.App, w io.Writer, st style) *app.App {
-	cp := *a
-	var mu sync.Mutex
-	cp.Events = func(e app.Event) {
-		mu.Lock()
-		defer mu.Unlock()
-		elapsed := ""
-		if e.Elapsed >= 100*time.Millisecond {
-			elapsed = st.dim(" (" + e.Elapsed.Round(100*time.Millisecond).String() + ")")
-		}
-		switch e.Kind {
-		case app.EventStarting:
-			_, _ = fmt.Fprintf(w, "%s %s starting\n", st.dim("-"), e.Service)
-		case app.EventRunning:
-			_, _ = fmt.Fprintf(w, "%s %s %s\n", st.green("✓"), e.Service, e.Detail)
-		case app.EventReady:
-			msg := "ready"
-			if e.Detail != "" {
-				msg = e.Detail
-			}
-			_, _ = fmt.Fprintf(w, "%s %s %s%s\n", st.green("✓"), e.Service, msg, elapsed)
-		case app.EventFailed:
-			_, _ = fmt.Fprintf(w, "%s %s %s%s\n", st.red("✗"), e.Service, e.Detail, elapsed)
-		case app.EventSkipped:
-			_, _ = fmt.Fprintf(w, "%s %s not started: %s\n", st.yellow("!"), e.Service, e.Detail)
-		case app.EventStopping:
-			_, _ = fmt.Fprintf(w, "%s %s stopping\n", st.dim("-"), e.Service)
-		case app.EventStopped:
-			if e.Detail != "" {
-				_, _ = fmt.Fprintf(w, "%s %s %s\n", st.yellow("!"), e.Service, e.Detail)
-			} else {
-				_, _ = fmt.Fprintf(w, "%s %s stopped%s\n", st.green("✓"), e.Service, elapsed)
-			}
-		case app.EventWarning:
-			_, _ = fmt.Fprintf(w, "%s %s\n", st.yellow("warning:"), e.Detail)
-		}
-	}
-	return &cp
 }

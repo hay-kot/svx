@@ -38,7 +38,12 @@ type App struct {
 type EventKind int
 
 const (
-	EventStarting EventKind = iota
+	// EventPlan lists, in Detail, the services Up is about to start, in
+	// stack order and comma-separated.
+	EventPlan EventKind = iota
+	// EventWaiting names, in Detail, the dependencies a service waits on.
+	EventWaiting
+	EventStarting
 	EventRunning
 	EventReady
 	EventFailed

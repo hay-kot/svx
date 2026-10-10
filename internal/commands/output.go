@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"text/tabwriter"
+	"unicode/utf8"
 
 	"github.com/mattn/go-isatty"
 
@@ -35,10 +35,64 @@ func (s style) red(t string) string    { return s.wrap("31", t) }
 func (s style) yellow(t string) string { return s.wrap("33", t) }
 func (s style) dim(t string) string    { return s.wrap("2", t) }
 func (s style) bold(t string) string   { return s.wrap("1", t) }
+func (s style) cyan(t string) string   { return s.wrap("36", t) }
 
-func table(w io.Writer) *tabwriter.Writer {
-	return tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+// tableWriter lays out tab-separated rows like text/tabwriter, but measures
+// cells by what the terminal shows. tabwriter counts colour escapes as
+// width, which throws off every column holding a coloured cell.
+type tableWriter struct {
+	w    io.Writer
+	buf  strings.Builder
+	rows [][]string
 }
+
+func table(w io.Writer) *tableWriter { return &tableWriter{w: w} }
+
+func (t *tableWriter) Write(p []byte) (int, error) {
+	t.buf.Write(p)
+	for {
+		text := t.buf.String()
+		line, rest, ok := strings.Cut(text, "\n")
+		if !ok {
+			break
+		}
+		t.rows = append(t.rows, strings.Split(line, "\t"))
+		t.buf.Reset()
+		t.buf.WriteString(rest)
+	}
+	return len(p), nil
+}
+
+// Flush writes the rows with columns two spaces apart. The last cell of a
+// row is never padded, so lines carry no trailing spaces.
+func (t *tableWriter) Flush() error {
+	var widths []int
+	for _, row := range t.rows {
+		for i, cell := range row[:max(len(row)-1, 0)] {
+			if i == len(widths) {
+				widths = append(widths, 0)
+			}
+			widths[i] = max(widths[i], visibleWidth(cell))
+		}
+	}
+	var b strings.Builder
+	for _, row := range t.rows {
+		for i, cell := range row {
+			b.WriteString(cell)
+			if i < len(row)-1 {
+				b.WriteString(strings.Repeat(" ", widths[i]-visibleWidth(cell)+2))
+			}
+		}
+		b.WriteByte('\n')
+	}
+	t.rows = nil
+	_, err := io.WriteString(t.w, b.String())
+	return err
+}
+
+func visibleWidth(s string) int { return utf8.RuneCountInString(stripStyle(s)) }
+
+func stripStyle(s string) string { return domain.StripANSI(s) }
 
 // formatPorts renders a service's ports as "5183" or "5183 hmr=24688".
 func formatPorts(ports map[string]int) string {
@@ -99,7 +153,7 @@ func printStack(w io.Writer, st style, v app.StackView) {
 	_, _ = fmt.Fprintf(w, "%s  %s  slot %d  %s\n", st.bold(s.ID.String()), status, s.Slot, st.dim(s.Session))
 
 	tw := table(w)
-	_, _ = fmt.Fprintln(tw, st.dim("SERVICE\tSTATE\tPORTS\tLINKS"))
+	_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", st.dim("SERVICE"), st.dim("STATE"), st.dim("PORTS"), st.dim("LINKS"))
 	for _, sv := range v.Services {
 		links := formatLinks(sv.Service.Links)
 		if links == "" {

@@ -65,7 +65,8 @@ func (cmd *RestartCmd) Register(app *cli.Command) *cli.Command {
 }
 
 func (cmd *RestartCmd) run(ctx context.Context, c *cli.Command) error {
-	a := withProgress(cmd.deps.App, os.Stderr, newStyle(os.Stderr, cmd.flags.NoColor))
+	a, finish := withProgress(cmd.deps.App, os.Stderr, cmd.flags.NoColor)
+	defer finish()
 	_, err := a.Restart(ctx, app.RestartRequest{Target: cmd.stack.target(), Services: c.Args().Slice(), NoWait: cmd.noWait})
 	return err
 }

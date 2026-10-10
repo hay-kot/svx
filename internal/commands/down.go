@@ -40,9 +40,11 @@ func (cmd *DownCmd) Register(app *cli.Command) *cli.Command {
 
 func (cmd *DownCmd) run(ctx context.Context, _ *cli.Command) error {
 	st := newStyle(os.Stdout, cmd.flags.NoColor)
-	a := withProgress(cmd.deps.App, os.Stderr, newStyle(os.Stderr, cmd.flags.NoColor))
+	a, finish := withProgress(cmd.deps.App, os.Stderr, cmd.flags.NoColor)
+	defer finish()
 
 	result, err := a.Down(ctx, app.DownRequest{Target: cmd.stack.target(), All: cmd.all, Purge: cmd.purge})
+	finish()
 	for _, id := range result.Stopped {
 		_, _ = fmt.Fprintf(os.Stdout, "%s %s down\n", st.green("✓"), id)
 	}

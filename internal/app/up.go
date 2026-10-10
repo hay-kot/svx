@@ -190,9 +190,14 @@ func (r *runner) start(ctx context.Context, targets map[string]bool, existing []
 	}
 
 	done := map[string]*doneSignal{}
-	for name := range targets {
-		done[name] = &doneSignal{ch: make(chan struct{}), ok: false}
+	var plan []string
+	for _, svc := range r.stack.Services {
+		if targets[svc.Name] {
+			done[svc.Name] = &doneSignal{ch: make(chan struct{}), ok: false}
+			plan = append(plan, svc.Name)
+		}
 	}
+	r.app.emit(Event{Kind: EventPlan, Service: "", Detail: strings.Join(plan, ","), Elapsed: 0})
 
 	var (
 		mu       sync.Mutex
@@ -218,6 +223,9 @@ func (r *runner) start(ctx context.Context, targets map[string]bool, existing []
 }
 
 func (r *runner) startOne(ctx context.Context, svc domain.Service, done map[string]*doneSignal, windows map[string]Window) Outcome {
+	if pending := pendingDeps(svc, done); len(pending) > 0 {
+		r.app.emit(Event{Kind: EventWaiting, Service: svc.Name, Detail: strings.Join(pending, ", "), Elapsed: 0})
+	}
 	for _, dep := range svc.Depends {
 		d := done[dep]
 		select {
@@ -242,6 +250,18 @@ func (r *runner) startOne(ctx context.Context, svc domain.Service, done map[stri
 	}
 
 	return r.app.launch(ctx, r.stack, svc, windows[svc.Name].ID, r.noWait, r.ensureSession)
+}
+
+func pendingDeps(svc domain.Service, done map[string]*doneSignal) []string {
+	var pending []string
+	for _, dep := range svc.Depends {
+		select {
+		case <-done[dep].ch:
+		default:
+			pending = append(pending, dep)
+		}
+	}
+	return pending
 }
 
 // ensureSession serialises the first window so exactly one goroutine creates
@@ -411,7 +431,7 @@ func (a *App) fail(ctx context.Context, stack domain.Stack, svc domain.Service, 
 	detail := why
 	if w, found, err := a.window(ctx, stack, svc.Name); err == nil && found {
 		if tail, err := a.Mux.Capture(ctx, w.ID, 15); err == nil {
-			if tail = strings.TrimRight(tail, "\n "); tail != "" {
+			if tail = strings.TrimRight(withoutBanner(tail), "\n "); tail != "" {
 				detail += "\n" + indent(tail, "    ")
 			}
 		}
@@ -430,6 +450,12 @@ func (a *App) window(ctx context.Context, stack domain.Stack, name string) (Wind
 		return Window{}, false, nil
 	}
 	return windows[i], true, nil
+}
+
+// withoutBanner drops the shim's banner, which only repeats the command.
+func withoutBanner(s string) string {
+	lines := strings.Split(s, "\n")
+	return strings.Join(slices.DeleteFunc(lines, func(l string) bool { return strings.HasPrefix(l, domain.BannerPrefix) }), "\n")
 }
 
 func indent(s, prefix string) string {
