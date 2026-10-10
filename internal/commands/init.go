@@ -2,47 +2,41 @@ package commands
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 
-	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
 )
 
 // InitCmd implements the init command.
 type InitCmd struct {
 	flags *Flags
+	deps  *Deps
 }
 
 // NewInitCmd creates a new init command.
-func NewInitCmd(flags *Flags) *InitCmd {
-	return &InitCmd{flags: flags}
+func NewInitCmd(flags *Flags, deps *Deps) *InitCmd {
+	return &InitCmd{flags: flags, deps: deps}
 }
 
 // Register adds the init command to the application.
 func (cmd *InitCmd) Register(app *cli.Command) *cli.Command {
 	app.Commands = append(app.Commands, &cli.Command{
-		Name:  "init",
-		Usage: "init command",
-		Flags: []cli.Flag{
-			// Add command-specific flags here
-		},
+		Name:   "init",
+		Usage:  "write a starter svx.yaml and ignore .svx/ in .gitignore",
 		Action: cmd.run,
 	})
-
 	return app
 }
 
 func (cmd *InitCmd) run(_ context.Context, _ *cli.Command) error {
-	log.Info().Msg("running init command")
-	if cmd.flags.JSON {
-		return json.NewEncoder(os.Stdout).Encode(map[string]string{
-			"message": "Hello World!",
-		})
+	dir, err := os.Getwd()
+	if err != nil {
+		return err
 	}
-
-	fmt.Println("Hello World!")
-
-	return nil
+	changed, err := cmd.deps.App.Init(dir)
+	for _, p := range changed {
+		_, _ = fmt.Fprintf(os.Stdout, "wrote %s\n", p)
+	}
+	return err
 }

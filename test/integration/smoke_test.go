@@ -9,7 +9,7 @@ import (
 
 func TestSmokeHelp(t *testing.T) {
 	h := NewHarness(t)
-	out, err := h.Run("help")
+	out, err := h.Run(t.TempDir(), "help")
 	if err != nil {
 		t.Fatalf("help command failed: %v\noutput: %s", err, out)
 	}
@@ -20,7 +20,7 @@ func TestSmokeHelp(t *testing.T) {
 
 func TestSmokeVersion(t *testing.T) {
 	h := NewHarness(t)
-	out, err := h.Run("--version")
+	out, err := h.Run(t.TempDir(), "--version")
 	if err != nil {
 		t.Fatalf("version command failed: %v\noutput: %s", err, out)
 	}
@@ -29,13 +29,13 @@ func TestSmokeVersion(t *testing.T) {
 	}
 }
 
-func TestSmokeCommand(t *testing.T) {
+func TestNoConfigExitsTwo(t *testing.T) {
 	h := NewHarness(t)
-	out, err := h.Run("up")
-	if err != nil {
-		t.Fatalf("command failed: %v\noutput: %s", err, out)
+	out, err := h.Run(t.TempDir(), "up")
+	if code := exitCode(err); code != 2 {
+		t.Fatalf("exit code = %d, want 2\n%s", code, out)
 	}
-	if !strings.Contains(out, "Hello World!") {
-		t.Fatalf("expected command output to contain Hello World!, got:\n%s", out)
+	if !strings.Contains(out, "svx init") {
+		t.Fatalf("error should point at svx init:\n%s", out)
 	}
 }

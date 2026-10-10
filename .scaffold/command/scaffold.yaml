@@ -20,7 +20,7 @@ inject:
     at: "// +scaffold:command:register"
     mode: after
     template: |
-      app = commands.New{{ .Scaffold.command_name | toPascalCase }}Cmd(flags).Register(app)
+      root = commands.New{{ .Scaffold.command_name | toPascalCase }}Cmd(flags, deps).Register(root)
 
 presets:
   default:

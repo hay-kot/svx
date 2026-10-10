@@ -43,6 +43,5 @@ run = [
 ]
 
 [tasks.integration]
-description = "Run Docker-based integration tests against the built binary"
-depends = ["build"]
-run = "docker build -f Dockerfile.test -t svx-integration-test . && docker run --rm svx-integration-test"
+description = "Run end-to-end tests against a freshly built binary and a private tmux server"
+run = "go build -o dist/svx-integration . && CLI_INTEGRATION=1 SVX_BIN=$PWD/dist/svx-integration go test -count=1 -tags integration ./test/integration/..."

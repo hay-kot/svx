@@ -33,3 +33,27 @@ func TestReadFromIgnoresUnknownFields(t *testing.T) {
 		t.Fatalf("ReadFrom().LogLevel = %q, want %q", cfg.LogLevel, "debug")
 	}
 }
+
+func TestReadFromMenuBarOptOut(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("menubar:\n  enabled: false\n"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := ReadFrom(path)
+	if err != nil {
+		t.Fatalf("ReadFrom() error = %v", err)
+	}
+	if cfg.MenuBar.Enabled {
+		t.Fatal("ReadFrom().MenuBar.Enabled = true, want false")
+	}
+	if cfg.LogLevel != "info" {
+		t.Fatalf("ReadFrom().LogLevel = %q, want default", cfg.LogLevel)
+	}
+}
+
+func TestDefaultEnablesMenuBar(t *testing.T) {
+	if !Default().MenuBar.Enabled {
+		t.Fatal("menu bar should default to on")
+	}
+}

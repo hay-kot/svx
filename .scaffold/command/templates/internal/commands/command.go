@@ -11,11 +11,12 @@ import (
 // {{ .Scaffold.command_name | toPascalCase }}Cmd implements the {{ .Scaffold.command_name }} command.
 type {{ .Scaffold.command_name | toPascalCase }}Cmd struct {
 	flags *Flags
+	deps  *Deps
 }
 
 // New{{ .Scaffold.command_name | toPascalCase }}Cmd creates a new {{ .Scaffold.command_name }} command.
-func New{{ .Scaffold.command_name | toPascalCase }}Cmd(flags *Flags) *{{ .Scaffold.command_name | toPascalCase }}Cmd {
-	return &{{ .Scaffold.command_name | toPascalCase }}Cmd{flags: flags}
+func New{{ .Scaffold.command_name | toPascalCase }}Cmd(flags *Flags, deps *Deps) *{{ .Scaffold.command_name | toPascalCase }}Cmd {
+	return &{{ .Scaffold.command_name | toPascalCase }}Cmd{flags: flags, deps: deps}
 }
 
 // Register adds the {{ .Scaffold.command_name }} command to the application.
