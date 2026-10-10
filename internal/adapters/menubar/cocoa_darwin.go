@@ -77,23 +77,30 @@ func draw(m Menu) {
 	actions := map[int]Action{}
 	C.svxMenuClear()
 	for i, e := range m.Entries {
-		title := C.CString(e.Title)
+		title, detail := C.CString(e.Title), C.CString(e.Detail)
+		tone, indent := C.int(e.Tone), C.int(e.Indent)
 		switch e.Kind {
 		case EntryHeader:
 			C.svxMenuAddHeader(title)
 		case EntryAction:
 			tag := i + 1
 			actions[tag] = e.Action
-			C.svxMenuAddItem(title, C.int(tag), true)
+			C.svxMenuAddItem(title, detail, C.int(tag), true, indent, tone, C.bool(e.Alternate))
 		case EntryNote:
-			C.svxMenuAddItem(title, 0, false)
+			C.svxMenuAddItem(title, detail, 0, false, indent, tone, false)
 		case EntrySeparator:
 			C.svxMenuAddSeparator()
+		case EntrySubmenu:
+			C.svxMenuBeginSubmenu(title, detail, tone, C.bool(e.Bold))
+		case EntrySubmenuEnd:
+			C.svxMenuEndSubmenu()
 		}
 		C.free(unsafe.Pointer(title))
+		C.free(unsafe.Pointer(detail))
 	}
 	C.svxMenuAddSeparator()
 	C.svxMenuAddQuit()
+	C.svxMenuFinish()
 	C.svxSetStatus(C.int(m.Running))
 
 	ui.mu.Lock()

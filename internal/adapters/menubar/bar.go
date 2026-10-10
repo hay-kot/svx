@@ -69,8 +69,9 @@ func (b *Bar) lock() (func(), error) {
 // svx must find the same server and state.
 var forwardedEnv = []string{"PATH", "SVX_STATE_DIR", "SVX_TMUX_SOCKET", "SVX_TMUX_CONFIG"}
 
-// AttachScript is the shell script that attaches a terminal to a stack.
-func AttachScript(svx string, id domain.Identity, getenv func(string) string) string {
+// AttachScript is the shell script that attaches a terminal to a stack, at
+// service's window when service is set.
+func AttachScript(svx string, id domain.Identity, service string, getenv func(string) string) string {
 	var b strings.Builder
 	b.WriteString("#!/bin/sh\n")
 	for _, k := range forwardedEnv {
@@ -78,7 +79,11 @@ func AttachScript(svx string, id domain.Identity, getenv func(string) string) st
 			fmt.Fprintf(&b, "export %s=%s\n", k, shellQuote(v))
 		}
 	}
-	fmt.Fprintf(&b, "exec %s attach --project %s --name %s\n", shellQuote(svx), shellQuote(id.Project), shellQuote(id.Stack))
+	fmt.Fprintf(&b, "exec %s attach --project %s --name %s", shellQuote(svx), shellQuote(id.Project), shellQuote(id.Stack))
+	if service != "" {
+		b.WriteString(" " + shellQuote(service))
+	}
+	b.WriteString("\n")
 	return b.String()
 }
 

@@ -12,7 +12,6 @@ package menubar
 import (
 	"fmt"
 	"maps"
-	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -30,6 +29,10 @@ const (
 	// EntryNote is greyed-out text, such as a dead service.
 	EntryNote
 	EntrySeparator
+	// EntrySubmenu opens a submenu titled Title. Entries up to the
+	// matching EntrySubmenuEnd go inside it.
+	EntrySubmenu
+	EntrySubmenuEnd
 )
 
 // ActionKind is what clicking an entry does.
@@ -40,20 +43,45 @@ const (
 	ActionOpenURL
 	ActionAttach
 	ActionStop
+	// ActionRestart restarts Service, or every started service when
+	// Service is empty.
+	ActionRestart
 )
 
 // Action is an entry's click handler, as data so menus compare by value.
 type Action struct {
-	Kind  ActionKind
-	URL   string
-	Stack domain.Identity
+	Kind    ActionKind
+	URL     string
+	Stack   domain.Identity
+	Service string
 }
+
+// Tone colours a row.
+type Tone int
+
+const (
+	ToneNormal Tone = iota
+	// ToneOK and ToneBad put a green or red health dot before a stack row.
+	ToneOK
+	ToneBad
+	// ToneDim greys a row out, for quiet information.
+	ToneDim
+)
 
 // Entry is one row of the menu.
 type Entry struct {
-	Kind   EntryKind
-	Title  string
-	Action Action
+	Kind  EntryKind
+	Title string
+	// Detail is right-aligned secondary text, such as a port or a summary.
+	Detail string
+	Tone   Tone
+	// Bold marks a stack row, the strongest row in the menu.
+	Bold bool
+	// Indent nests a row under its stack, or a link under its service.
+	Indent int
+	// Alternate makes the row replace the one above it while ⌥ is held.
+	Alternate bool
+	Action    Action
 }
 
 // Menu is everything the status item shows.
@@ -71,6 +99,13 @@ func (m Menu) Equal(o Menu) bool {
 
 // Build lays out the menu for the given stacks. Stacks that are down, or
 // whose project turned the menu bar off, are left out.
+//
+// Each stack is a bold row with a health dot and a summary; hovering it
+// opens the stack's actions. Under it, every running service with a URL is
+// one click from opening, and holding ⌥ turns that click into a restart.
+// Failed services show in red. Running services with nothing to open fold
+// into one quiet line, and finished oneshots and idle services stay out of
+// the list.
 func Build(views []app.StackView) Menu {
 	var m Menu
 	for _, v := range views {
@@ -82,62 +117,141 @@ func Build(views []app.StackView) Menu {
 		if len(m.Entries) > 0 {
 			m.Entries = append(m.Entries, Entry{Kind: EntrySeparator})
 		}
-		m.Entries = append(m.Entries, Entry{Kind: EntryHeader, Title: s.ID.Project + " · " + s.ID.Stack})
-		for _, svc := range v.Services {
-			m.Entries = append(m.Entries, serviceEntries(svc.Service)...)
-		}
-		for _, svc := range v.Services {
-			if note, ok := serviceNote(svc); ok {
-				m.Entries = append(m.Entries, Entry{Kind: EntryNote, Title: note})
+		m.Entries = append(m.Entries, stackMenu(v)...)
+		var quiet []string
+		for _, sv := range v.Services {
+			rows, isQuiet := serviceRows(s.ID, sv)
+			m.Entries = append(m.Entries, rows...)
+			if isQuiet {
+				quiet = append(quiet, sv.Service.Name)
 			}
 		}
-		m.Entries = append(m.Entries,
-			Entry{Kind: EntryAction, Title: "Attach in Terminal", Action: Action{Kind: ActionAttach, Stack: s.ID}},
-			Entry{Kind: EntryAction, Title: "Stop Stack", Action: Action{Kind: ActionStop, Stack: s.ID}},
-		)
+		if len(quiet) > 0 {
+			m.Entries = append(m.Entries, Entry{Kind: EntryNote, Title: "also running: " + strings.Join(quiet, ", "), Tone: ToneDim, Indent: 1})
+		}
 	}
 	if m.Running == 0 {
-		m.Entries = append(m.Entries, Entry{Kind: EntryNote, Title: "No stacks running"})
+		m.Entries = append(m.Entries, Entry{Kind: EntryNote, Title: "No stacks running", Tone: ToneDim})
 	}
 	return m
 }
 
-// serviceEntries lists a service's links with the port each one points at.
-// A service with ports but no links still gets a row, so every port the
-// stack holds is visible.
-func serviceEntries(svc domain.Service) []Entry {
-	var entries []Entry
-	for _, l := range svc.Links {
-		title := l.Label
-		if u, err := url.Parse(l.URL); err == nil && u.Port() != "" {
-			title += "  :" + u.Port()
+// stackMenu is a stack's row and the submenu of its actions.
+func stackMenu(v app.StackView) []Entry {
+	id := v.Stack.ID
+	running, failed := 0, 0
+	for _, sv := range v.Services {
+		switch {
+		case sv.State == app.StateRunning:
+			running++
+		case failedState(sv):
+			failed++
 		}
-		entries = append(entries, Entry{Kind: EntryAction, Title: title, Action: Action{Kind: ActionOpenURL, URL: l.URL}})
 	}
-	if len(svc.Links) == 0 && len(svc.Ports) > 0 {
-		ports := make([]string, 0, len(svc.Ports))
-		for _, name := range slices.Sorted(maps.Keys(svc.Ports)) {
-			ports = append(ports, ":"+strconv.Itoa(svc.Ports[name]))
+	head := Entry{Kind: EntrySubmenu, Title: id.Project + " · " + id.Stack, Bold: true, Tone: ToneOK, Detail: fmt.Sprintf("%d running", running)}
+	if failed > 0 {
+		head.Tone, head.Detail = ToneBad, fmt.Sprintf("%d failed", failed)
+	}
+
+	entries := []Entry{
+		head,
+		{Kind: EntryAction, Title: "Restart All Services", Action: Action{Kind: ActionRestart, Stack: id}},
+		{Kind: EntryAction, Title: "Attach in Terminal", Action: Action{Kind: ActionAttach, Stack: id}},
+		{Kind: EntryAction, Title: "Stop Stack", Action: Action{Kind: ActionStop, Stack: id}},
+		{Kind: EntrySeparator},
+		{Kind: EntryHeader, Title: "Restart service"},
+	}
+	for _, sv := range v.Services {
+		verb := "Restart "
+		if sv.State == app.StateIdle || sv.State == app.StateStopped || sv.State == app.StateMissing {
+			verb = "Start "
 		}
-		entries = append(entries, Entry{Kind: EntryNote, Title: svc.Name + "  " + strings.Join(ports, " ")})
+		entries = append(entries, Entry{
+			Kind:   EntryAction,
+			Title:  verb + sv.Service.Name,
+			Action: Action{Kind: ActionRestart, Stack: id, Service: sv.Service.Name},
+		})
 	}
-	return entries
+	return append(entries, Entry{Kind: EntrySubmenuEnd})
 }
 
-// serviceNote describes a service that needs attention. Running services
-// and oneshots that finished cleanly need none.
-func serviceNote(svc app.ServiceView) (string, bool) {
-	switch svc.State {
+// failedState is a service that should be running and is not. A oneshot
+// that exited 0 finished its job.
+func failedState(sv app.ServiceView) bool {
+	switch sv.State {
 	case app.StateExited:
-		if svc.Service.Oneshot && svc.ExitCode == 0 {
-			return "", false
-		}
-		return fmt.Sprintf("%s exited (%d)", svc.Service.Name, svc.ExitCode), true
+		return sv.ExitCode != 0 || !sv.Service.Oneshot
 	case app.StateMissing:
-		return svc.Service.Name + " window closed", true
+		return true
 	case app.StateRunning, app.StateIdle, app.StateStopped:
 	}
-	return "", false
+	return false
+}
+
+// serviceRows lists one service under its stack. It reports a running
+// service with nothing to open as quiet instead of giving it a row.
+func serviceRows(id domain.Identity, sv app.ServiceView) ([]Entry, bool) {
+	svc := sv.Service
+	restart := Entry{
+		Kind: EntryAction, Title: "Restart " + svc.Name, Indent: 1, Alternate: true,
+		Action: Action{Kind: ActionRestart, Stack: id, Service: svc.Name},
+	}
+	switch {
+	case sv.State == app.StateMissing:
+		return []Entry{{
+			Kind: EntryAction, Title: svc.Name, Detail: "window closed", Tone: ToneBad, Indent: 1,
+			Action: Action{Kind: ActionRestart, Stack: id, Service: svc.Name},
+		}}, false
+	case failedState(sv):
+		return []Entry{{
+			Kind: EntryAction, Title: svc.Name, Detail: fmt.Sprintf("exited (%d)", sv.ExitCode), Tone: ToneBad, Indent: 1,
+			Action: Action{Kind: ActionAttach, Stack: id, Service: svc.Name},
+		}, restart}, false
+	case sv.State != app.StateRunning:
+		return nil, false
+	}
+
+	links := svc.Links
+	if len(links) == 0 && svc.URL != "" {
+		links = []domain.Link{{Label: "", URL: svc.URL}}
+	}
+	if len(links) == 0 {
+		return nil, true
+	}
+	rows := []Entry{
+		{Kind: EntryAction, Title: svc.Name, Detail: formatPorts(svc.Ports), Indent: 1, Action: Action{Kind: ActionOpenURL, URL: links[0].URL}},
+		restart,
+	}
+	for _, l := range links[1:] {
+		rows = append(rows, Entry{Kind: EntryAction, Title: l.Label, Indent: 2, Action: Action{Kind: ActionOpenURL, URL: l.URL}})
+	}
+	return rows, false
+}
+
+// formatPorts lists ports main first, as ":5432 :5433".
+func formatPorts(ports map[string]int) string {
+	var out []string
+	if p, ok := ports[domain.MainPort]; ok {
+		out = append(out, ":"+strconv.Itoa(p))
+	}
+	for _, name := range slices.Sorted(maps.Keys(ports)) {
+		if name != domain.MainPort {
+			out = append(out, ":"+strconv.Itoa(ports[name]))
+		}
+	}
+	return strings.Join(out, " ")
+}
+
+// RestartTargets picks what "Restart All Services" restarts: every service
+// that was started. Idle services were never asked for and stay idle.
+func RestartTargets(v app.StackView) []string {
+	var names []string
+	for _, svc := range v.Services {
+		if svc.State != app.StateIdle {
+			names = append(names, svc.Service.Name)
+		}
+	}
+	return names
 }
 
 // ErrorMenu shows a failure to read state in place of the stacks.

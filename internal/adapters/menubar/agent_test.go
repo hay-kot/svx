@@ -43,12 +43,12 @@ func TestAgentEnvKeepsOnlyForwardedVars(t *testing.T) {
 }
 
 func TestAttachScript(t *testing.T) {
-	got := AttachScript("/usr/local/bin/svx", domain.Identity{Project: "shop", Stack: "it's"}, func(k string) string {
+	got := AttachScript("/usr/local/bin/svx", domain.Identity{Project: "shop", Stack: "it's"}, "api", func(k string) string {
 		return map[string]string{"PATH": "/opt/homebrew/bin:/bin"}[k]
 	})
 	want := "#!/bin/sh\n" +
 		"export PATH='/opt/homebrew/bin:/bin'\n" +
-		`exec '/usr/local/bin/svx' attach --project 'shop' --name 'it'\''s'` + "\n"
+		`exec '/usr/local/bin/svx' attach --project 'shop' --name 'it'\''s' 'api'` + "\n"
 	if got != want {
 		t.Fatalf("AttachScript =\n%s\nwant\n%s", got, want)
 	}

@@ -57,9 +57,21 @@ func (b *Bar) perform(ctx context.Context, a Action) error {
 	case ActionOpenURL:
 		return b.App.Browser.Open(ctx, a.URL)
 	case ActionAttach:
-		return b.attach(ctx, a.Stack)
+		return b.attach(ctx, a.Stack, a.Service)
 	case ActionStop:
 		_, err := b.App.Down(ctx, app.DownRequest{Target: app.Target{Project: a.Stack.Project, Stack: a.Stack.Stack}})
+		return err
+	case ActionRestart:
+		target := app.Target{Project: a.Stack.Project, Stack: a.Stack.Stack}
+		services := []string{a.Service}
+		if a.Service == "" {
+			view, err := b.App.Status(ctx, target)
+			if err != nil {
+				return err
+			}
+			services = RestartTargets(view)
+		}
+		_, err := b.App.Restart(ctx, app.RestartRequest{Target: target, Services: services})
 		return err
 	case ActionNone:
 	}
@@ -68,13 +80,13 @@ func (b *Bar) perform(ctx context.Context, a Action) error {
 
 // attach opens the terminal app on a script that runs svx attach. A
 // .command file is what Terminal and iTerm both run when opened.
-func (b *Bar) attach(ctx context.Context, id domain.Identity) error {
+func (b *Bar) attach(ctx context.Context, id domain.Identity, service string) error {
 	dir := filepath.Join(b.App.Store.Dir(), "menubar")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	path := filepath.Join(dir, id.Key()+".command")
-	if err := os.WriteFile(path, []byte(AttachScript(b.Executable, id, os.Getenv)), 0o700); err != nil { //nolint:gosec // the terminal must execute it
+	if err := os.WriteFile(path, []byte(AttachScript(b.Executable, id, service, os.Getenv)), 0o700); err != nil { //nolint:gosec // the terminal must execute it
 		return err
 	}
 	terminal := b.Terminal
