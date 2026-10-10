@@ -55,3 +55,42 @@ func TestStripANSI(t *testing.T) {
 		t.Fatalf("StripANSI = %q", got)
 	}
 }
+
+func TestRunOutput(t *testing.T) {
+	banner := func(pid int) string {
+		return BannerPrefix + "demo/a db " + RunMarker(pid) + " -- sleep 2; echo listening on 1"
+	}
+	tests := []struct {
+		name    string
+		history string
+		want    string
+	}{
+		{
+			name:    "skips the banner, which quotes the command",
+			history: banner(7) + "\nbooting",
+			want:    "booting",
+		},
+		{
+			name:    "drops earlier runs",
+			history: banner(6) + "\nlistening on 1\n" + banner(7) + "\n\x1b[32mbooting\x1b[0m",
+			want:    "booting",
+		},
+		{
+			name:    "nothing before this run's banner",
+			history: banner(6) + "\nlistening on 1",
+			want:    "",
+		},
+		{
+			name:    "banner trimmed by the history limit",
+			history: "still booting\nlistening on 1",
+			want:    "still booting\nlistening on 1",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RunOutput(tt.history, 7); got != tt.want {
+				t.Errorf("RunOutput() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

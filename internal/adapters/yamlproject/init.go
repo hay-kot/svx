@@ -19,7 +19,7 @@ const starter = `# svx.yaml -- services svx runs as windows in a tmux session.
 settings:
   port_stride: 10           # every port is base + slot * port_stride
   # max_slots: 50
-  # logs: true              # pipe each window to .svx/<stack>/logs/<service>.log
+  # logs: true              # also write each window to .svx/<stack>/logs/<service>.log
   # menubar: true           # list this project's stacks in the menu bar
 
 # vars:

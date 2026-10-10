@@ -19,8 +19,9 @@ type RunPlan struct {
 // another terminal or another tmux session.
 var PaneOwned = []string{"TMUX", "TMUX_PANE", "TERM"}
 
-// PlanRun reads the recorded stack and prepares one service's exec.
-func (a *App) PlanRun(key, service string, current map[string]string) (RunPlan, error) {
+// PlanRun reads the recorded stack and prepares one service's exec. pid is
+// the shim's own, which the service keeps since the shim execs it.
+func (a *App) PlanRun(key, service string, pid int, current map[string]string) (RunPlan, error) {
 	id, err := domain.ParseKey(key)
 	if err != nil {
 		return RunPlan{}, usage(err)
@@ -38,7 +39,7 @@ func (a *App) PlanRun(key, service string, current map[string]string) (RunPlan, 
 	if p, ok := svc.MainPort(); ok {
 		banner += fmt.Sprintf(" on %d", p)
 	}
-	banner += " -- " + svc.Run
+	banner += " " + domain.RunMarker(pid) + " -- " + svc.Run
 
 	return RunPlan{
 		Dir:    svc.Dir,

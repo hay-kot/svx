@@ -40,7 +40,7 @@ func (cmd *RunCmd) run(ctx context.Context, c *cli.Command) error {
 	if c.Args().Len() != 2 {
 		return errors.New("usage: svx _run <project--stack> <service>")
 	}
-	plan, err := cmd.deps.App.PlanRun(c.Args().Get(0), c.Args().Get(1), cmd.deps.App.Environ())
+	plan, err := cmd.deps.App.PlanRun(c.Args().Get(0), c.Args().Get(1), os.Getpid(), cmd.deps.App.Environ())
 	if err != nil {
 		return err
 	}

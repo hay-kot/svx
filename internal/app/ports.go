@@ -94,6 +94,8 @@ type Multiplexer interface {
 	// Windows lists the windows in session tagged with stack.
 	Windows(ctx context.Context, session, stack string) ([]Window, error)
 	KillWindow(ctx context.Context, window string) error
+	// Capture returns the last lines of a window's history without blank
+	// lines, or all of it when lines is 0.
 	Capture(ctx context.Context, window string, lines int) (string, error)
 	// Attach hands the terminal to tmux, switching client when already
 	// inside tmux. window is a window id and may be empty.
@@ -126,10 +128,8 @@ type Probe struct {
 	Env   []string
 	// Port is the primary port, for the default TCP check.
 	Port int
-	// LogFile and LogOffset scope an output check to what the current run
-	// wrote.
-	LogFile   string
-	LogOffset int64
+	// Output is what the current run has printed, for an output check.
+	Output string
 }
 
 // ReadyProber runs one readiness attempt. A nil error means ready.
@@ -141,7 +141,6 @@ type ReadyProber interface {
 type Files interface {
 	MkdirAll(path string) error
 	RemoveAll(path string) error
-	Size(path string) int64
 }
 
 // Browser opens URLs.

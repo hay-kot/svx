@@ -4,7 +4,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -70,43 +69,14 @@ func TestCmdUsesDirAndEnv(t *testing.T) {
 	}
 }
 
-// The shim's banner quotes the command, which often holds the very text
-// the readiness regex looks for.
-func TestOutputSkipsBanner(t *testing.T) {
-	log := filepath.Join(t.TempDir(), "svc.log")
-	banner := "\x1b[2m" + domain.BannerPrefix + "demo/a db -- sleep 2; echo ready to accept connections\x1b[0m\n"
-	if err := os.WriteFile(log, []byte(banner), 0o600); err != nil {
-		t.Fatal(err)
-	}
+func TestOutputMatchesCurrentRun(t *testing.T) {
 	p := New()
-	probe := app.Probe{Kind: domain.ReadyOutput, Value: `ready to accept connections`, LogFile: log, LogOffset: 0}
+	probe := app.Probe{Kind: domain.ReadyOutput, Value: `listening on \d+`, Output: "booting"}
 	if err := p.Probe(t.Context(), probe); err == nil {
-		t.Fatal("matched the banner")
+		t.Fatal("matched before the line was printed")
 	}
-	f, _ := os.OpenFile(log, os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec // test temp file
-	_, _ = f.WriteString("ready to accept connections\n")
-	_ = f.Close()
+	probe.Output = "booting\nlistening on 8090"
 	if err := p.Probe(t.Context(), probe); err != nil {
-		t.Fatalf("service output not matched: %v", err)
-	}
-}
-
-func TestOutputOnlyCountsCurrentRun(t *testing.T) {
-	log := filepath.Join(t.TempDir(), "svc.log")
-	old := "\x1b[32mlistening on 8080\x1b[0m\n"
-	if err := os.WriteFile(log, []byte(old), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	p := New()
-	probe := app.Probe{Kind: domain.ReadyOutput, Value: `listening on \d+`, LogFile: log, LogOffset: int64(len(old))}
-	if err := p.Probe(t.Context(), probe); err == nil {
-		t.Fatal("matched output from a previous run")
-	}
-
-	f, _ := os.OpenFile(log, os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec // test temp file
-	_, _ = f.WriteString("\x1b[1mlistening on 8090\x1b[0m\n")
-	_ = f.Close()
-	if err := p.Probe(t.Context(), probe); err != nil {
-		t.Fatalf("new output not matched: %v", err)
+		t.Fatalf("output not matched: %v", err)
 	}
 }

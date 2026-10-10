@@ -82,15 +82,6 @@ func (Files) MkdirAll(path string) error { return os.MkdirAll(path, 0o750) }
 
 func (Files) RemoveAll(path string) error { return os.RemoveAll(path) }
 
-// Size returns a file's size, or 0 when it does not exist.
-func (Files) Size(path string) int64 {
-	info, err := os.Stat(path)
-	if err != nil {
-		return 0
-	}
-	return info.Size()
-}
-
 // Browser opens URLs with the platform opener.
 type Browser struct{}
 

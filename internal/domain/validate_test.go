@@ -31,10 +31,6 @@ func TestValidateErrors(t *testing.T) {
 			d.Services[0].Depends = []string{"web"}
 			d.Services[1].Depends = []string{redisSvc}
 		}, "dependency cycle"},
-		{"output without logs", func(d *Definition) {
-			d.Settings.Logs = false
-			d.Services[0].Ready = ReadySpec{Kind: ReadyOutput, Value: "ready", Timeout: 1}
-		}, "needs settings.logs"},
 		{"oneshot with ready", func(d *Definition) { d.Services[1].Oneshot = true }, "oneshot"},
 		{"bad signal", func(d *Definition) { d.Services[0].Stop.Signal = "SIGNOPE" }, "unknown signal"},
 	}

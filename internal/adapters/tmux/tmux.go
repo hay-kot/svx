@@ -272,10 +272,14 @@ func (c *Client) KillWindow(ctx context.Context, window string) error {
 	return nil
 }
 
-// Capture returns the last lines of a window's visible history, without
-// trailing blank lines.
+// Capture returns the last lines of a window's history, or all of it when
+// lines is 0, without blank lines.
 func (c *Client) Capture(ctx context.Context, window string, lines int) (string, error) {
-	out, err := c.run(ctx, "capture-pane", "-p", "-J", "-t", window, "-S", "-"+strconv.Itoa(lines*4))
+	start := "-"
+	if lines > 0 {
+		start = "-" + strconv.Itoa(lines*4)
+	}
+	out, err := c.run(ctx, "capture-pane", "-p", "-J", "-t", window, "-S", start)
 	if err != nil {
 		return "", err
 	}
@@ -290,7 +294,7 @@ func (c *Client) Capture(ctx context.Context, window string, lines int) (string,
 		}
 		kept = append(kept, l)
 	}
-	if len(kept) > lines {
+	if lines > 0 && len(kept) > lines {
 		kept = kept[len(kept)-lines:]
 	}
 	return strings.Join(kept, "\n"), nil

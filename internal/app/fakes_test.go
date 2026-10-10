@@ -376,7 +376,6 @@ type fakeFiles struct{}
 
 func (fakeFiles) MkdirAll(string) error  { return nil }
 func (fakeFiles) RemoveAll(string) error { return nil }
-func (fakeFiles) Size(string) int64      { return 0 }
 
 type fakeProjects struct{ project Project }
 

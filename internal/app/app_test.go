@@ -407,7 +407,7 @@ func TestPlanRunEnvLayering(t *testing.T) {
 		}},
 	})
 
-	plan, err := a.PlanRun("shop--one", "api", map[string]string{"TMUX": "pane-tmux", "TMUX_PANE": "%3"})
+	plan, err := a.PlanRun("shop--one", "api", 42, map[string]string{"TMUX": "pane-tmux", "TMUX_PANE": "%3"})
 	if err != nil {
 		t.Fatal(err)
 	}

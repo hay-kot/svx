@@ -44,7 +44,7 @@ project: shop # optional, defaults to the main checkout's directory name
 settings:
   port_stride: 10 # each slot offsets every port by this much
   max_slots: 50
-  logs: true # pipe windows to .svx/<stack>/logs/<service>.log
+  logs: false # true also writes each window to .svx/<stack>/logs/<service>.log
   menubar: true # false hides this project's stacks from the menu bar
 
 vars:
@@ -146,7 +146,7 @@ projects: # svx.yaml files for repos that have none of their own
 | `svx ls`                   | Every stack on the machine. `--json`                                                                       |
 | `svx attach [service]`     | Attach, or switch client when already in tmux                                                              |
 | `svx restart <service...>` | Restart in place, keeping ports, in dependency order                                                       |
-| `svx logs <service>`       | Print a log. `-f`, `--raw`, `-n`                                                                           |
+| `svx logs <service>`       | Print a log, or the window's scrollback when logs are off. `-f` needs `logs: true`. `--raw`, `-n`          |
 | `svx env`                  | Print the stack's variables. `--format shell\|dotenv\|json`, `--service`                                   |
 | `svx exec -- <cmd>`        | Run a command with the stack's environment                                                                 |
 | `svx open [link]`          | Open a link, or list them                                                                                  |
@@ -201,7 +201,7 @@ The code follows ports and adapters:
 | `internal/adapters/yamlproject` | Finds, merges and maps `svx.yaml`                                                                                              |
 | `internal/adapters/statefs`     | State directory, flock, atomic writes                                                                                          |
 | `internal/adapters/tmux`        | The tmux binary                                                                                                                |
-| `internal/adapters/readiness`   | HTTP, TCP, command and log readiness probes                                                                                    |
+| `internal/adapters/readiness`   | HTTP, TCP, command and output readiness probes                                                                                 |
 | `internal/adapters/menubar`     | The macOS menu bar app and its launchd login item                                                                              |
 | `internal/adapters/system`      | Signals, port probes, files, browser, secrets                                                                                  |
 | `internal/commands`             | CLI wiring and output only                                                                                                     |
@@ -228,4 +228,5 @@ Tests never touch your tmux server or state: they use `tmux -L svx-test-<random>
 - A oneshot that already exited 0 counts as done on a repeat `up` and is not rerun. Use `svx restart <name>` to rerun it.
 - `svx restart` re-renders the config against the recorded slot, so config edits apply without moving ports.
 - `svx logs` takes `-n` to limit output to the last lines.
+- `settings.logs` defaults to false. `ready.output` reads the window's tmux history instead of the log file, so it works either way.
 - The public record adds `dir`, `menubar`, `service_order` and per-service `oneshot` fields. `session` is the session `up` ran from.

@@ -74,7 +74,7 @@ func TestLoadWalksUpAndKeepsOrder(t *testing.T) {
 	if got := strings.Join(def.ServiceNames(), ","); got != "web,redis,api,worker" {
 		t.Fatalf("order = %s", got)
 	}
-	if def.Project != "shop" || def.Settings.PortStride != 20 || def.Settings.MaxSlots != domain.DefaultMaxSlots || !def.Settings.Logs {
+	if def.Project != "shop" || def.Settings.PortStride != 20 || def.Settings.MaxSlots != domain.DefaultMaxSlots || def.Settings.Logs {
 		t.Fatalf("settings = %+v", def.Settings)
 	}
 

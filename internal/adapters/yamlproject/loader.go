@@ -261,7 +261,7 @@ func toDefinition(source string, fc fileConfig, root *yaml.Node) (domain.Definit
 		Settings: domain.Settings{
 			PortStride: valueOr(fc.Settings.PortStride, domain.DefaultPortStride),
 			MaxSlots:   valueOr(fc.Settings.MaxSlots, domain.DefaultMaxSlots),
-			Logs:       valueOr(fc.Settings.Logs, true),
+			Logs:       valueOr(fc.Settings.Logs, false),
 			MenuBar:    valueOr(fc.Settings.MenuBar, true),
 		},
 		Vars:     orEmpty(fc.Vars),
