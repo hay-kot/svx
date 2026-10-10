@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -76,9 +77,6 @@ func TestUpReusesSessionAndStartsOnlyMissingOrDead(t *testing.T) {
 	f.mux.resetCalls()
 
 	second := mustUp(t, a, UpRequest{Target: target("one")})
-	if !second.Reused {
-		t.Error("Reused = false, want true")
-	}
 	if second.Stack.Slot != first.Stack.Slot {
 		t.Errorf("slot = %d, want recorded %d", second.Stack.Slot, first.Stack.Slot)
 	}
@@ -214,9 +212,9 @@ func TestStaleRecordReleasesSlot(t *testing.T) {
 	}
 }
 
-// A record saved moments ago may not have its session yet. It must still
+// A record saved moments ago may not have its windows yet. It must still
 // hold its slot, or two concurrent `up` runs could share one.
-func TestFreshRecordHoldsSlotBeforeSessionExists(t *testing.T) {
+func TestFreshRecordHoldsSlotBeforeWindowsExist(t *testing.T) {
 	a, f := newTestApp(t, testDef(svc("api", 3000)))
 	starting := domain.Stack{
 		ID:        ident("starting"),
@@ -243,22 +241,34 @@ func TestDownStopsInReverseDependencyOrder(t *testing.T) {
 	a, f := newTestApp(t, testDef(svc("db", 4000), svc("api", 3000, "db"), svc("web", 5000, "api")))
 	up := mustUp(t, a, UpRequest{Target: target("one")})
 
-	res, err := a.Down(t.Context(), DownRequest{Target: target("one")})
-	if err != nil {
+	if _, err := a.Down(t.Context(), DownRequest{Target: target("one")}); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.signals.names(); !slices.Equal(got, []string{"web", "api", "db"}) {
 		t.Errorf("signal order = %v, want [web api db]", got)
 	}
-	if len(res.Forced) != 0 {
-		t.Errorf("forced = %v", res.Forced)
-	}
-	if ok, _ := f.mux.HasSession(t.Context(), up.Stack.Session); ok {
-		t.Errorf("session %s outlived its last window", up.Stack.Session)
+	if ws, _ := f.mux.Windows(t.Context(), up.Stack.Session, ident("one").Key()); len(ws) != 0 {
+		t.Errorf("windows after down = %v", ws)
 	}
 	rec, _, _ := f.store.Load(ident("one"))
 	if rec.Status != domain.StackDown || rec.Slot != up.Stack.Slot {
 		t.Errorf("record = %s slot %d, want down slot %d", rec.Status, rec.Slot, up.Stack.Slot)
+	}
+}
+
+func TestDownKillsServiceThatIgnoresStopSignal(t *testing.T) {
+	a, f := newTestApp(t, testDef(svc("api", 3000)))
+	mustUp(t, a, UpRequest{Target: target("one")})
+	f.signals.ignore = map[string]bool{"api": true}
+
+	if _, err := a.Down(t.Context(), DownRequest{Target: target("one")}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.signals.sigs(); !slices.Equal(got, []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL}) {
+		t.Errorf("signals = %v, want [SIGTERM SIGKILL]", got)
+	}
+	if ws, _ := f.mux.Windows(t.Context(), "work", ident("one").Key()); len(ws) != 0 {
+		t.Errorf("windows after down = %v", ws)
 	}
 }
 
@@ -279,8 +289,8 @@ func TestDownAllStopsEveryUpStack(t *testing.T) {
 		if rec.Status != domain.StackDown {
 			t.Errorf("%s status = %s, want down", name, rec.Status)
 		}
-		if ok, _ := f.mux.HasSession(t.Context(), ident(name).Session()); ok {
-			t.Errorf("%s session still alive", name)
+		if ws, _ := f.mux.Windows(t.Context(), "work", ident(name).Key()); len(ws) != 0 {
+			t.Errorf("%s windows after down = %v", name, ws)
 		}
 	}
 }
@@ -322,6 +332,24 @@ func TestRestartFollowsDependencyOrder(t *testing.T) {
 	}
 	if got := f.mux.respawnedNames(); !slices.Equal(got, []string{"db", "migrate", "api"}) {
 		t.Errorf("respawned = %v, want [db migrate api]", got)
+	}
+}
+
+func TestRestartSkipsDependentOfFailedDependency(t *testing.T) {
+	a, f := newTestApp(t, testDef(svc("db", 5432), svc("api", 3000, "db")))
+	mustUp(t, a, UpRequest{Target: target("one")})
+	f.mux.resetCalls()
+	f.mux.dieOnStart["db"] = 1
+
+	res, err := a.Restart(t.Context(), RestartRequest{Target: target("one"), Services: []string{"db", "api"}})
+	if _, ok := errors.AsType[*ServiceError](err); !ok {
+		t.Fatalf("err = %v, want *ServiceError", err)
+	}
+	if got := res.Outcomes["api"].State; got != OutcomeSkipped {
+		t.Errorf("api outcome = %s, want skipped", got)
+	}
+	if got := f.mux.respawnedNames(); !slices.Equal(got, []string{"db"}) {
+		t.Errorf("respawned = %v, want [db]", got)
 	}
 }
 
@@ -406,64 +434,35 @@ func TestUpUnknownServiceIsUsageError(t *testing.T) {
 	}
 }
 
-func TestUpInsideTmuxAddsWindowsToCurrentSession(t *testing.T) {
+// A running stack stays in the session it started in, and down leaves that
+// session and the user's own windows alone.
+func TestUpKeepsRunningStackInItsSession(t *testing.T) {
 	a, f := newTestApp(t, testDef(svc("api", 8080), svc("web", 3000, "api")))
-	f.mux.addSession("work")
-	f.mux.current = "work"
+	mustUp(t, a, UpRequest{Target: target("one")})
 
-	up, err := a.Up(t.Context(), UpRequest{Target: target("one")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if up.Stack.Session != "work" {
-		t.Fatalf("session = %q, want the current session work", up.Stack.Session)
-	}
-	for _, spec := range f.mux.started {
-		if spec.CreateSession || spec.Session != "work" {
-			t.Errorf("%s started with session %q create=%v", spec.Service, spec.Session, spec.CreateSession)
-		}
-	}
-	rec, _, _ := f.store.Load(ident("one"))
-	if rec.Session != "work" {
-		t.Errorf("record session = %q, want work", rec.Session)
-	}
-
-	// A repeat up from another session leaves the running stack where it is.
 	f.mux.addSession("other")
 	f.mux.current = "other"
-	again, err := a.Up(t.Context(), UpRequest{Target: target("one")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !again.Reused || again.Stack.Session != "work" {
-		t.Fatalf("repeat up: reused=%v session=%q, want the running stack in work", again.Reused, again.Stack.Session)
+	again := mustUp(t, a, UpRequest{Target: target("one")})
+	if again.Stack.Session != "work" || len(f.mux.startedNames()) != 2 {
+		t.Fatalf("repeat up: session=%q started=%v, want the running stack left in work", again.Stack.Session, f.mux.startedNames())
 	}
 
 	if _, err := a.Down(t.Context(), DownRequest{Target: target("one")}); err != nil {
 		t.Fatal(err)
 	}
-	ws, _ := f.mux.Windows(t.Context(), "work", ident("one").Key())
-	if len(ws) != 0 {
-		t.Errorf("stack windows after down = %v", ws)
-	}
-	if ok, _ := f.mux.HasSession(t.Context(), "work"); !ok {
-		t.Fatal("down killed the user's session")
-	}
-	if len(f.mux.sessions["work"]) != 1 || f.mux.sessions["work"][0].ID != "@user" {
-		t.Errorf("user's windows after down = %v", f.mux.sessions["work"])
+	if !f.mux.hasSession("work") || len(f.mux.sessions["work"]) != 1 || f.mux.sessions["work"][0].ID != "@user" {
+		t.Errorf("user's session after down = %v", f.mux.sessions["work"])
 	}
 }
 
-func TestUpOutsideTmuxUsesOwnSession(t *testing.T) {
+func TestUpOutsideTmuxIsUsageError(t *testing.T) {
 	a, f := newTestApp(t, testDef(svc("api", 8080)))
-	up, err := a.Up(t.Context(), UpRequest{Target: target("one")})
-	if err != nil {
-		t.Fatal(err)
+	f.mux.current = ""
+	_, err := a.Up(t.Context(), UpRequest{Target: target("one")})
+	if ExitCode(err) != ExitUsage {
+		t.Fatalf("err = %v, want a usage error", err)
 	}
-	if up.Stack.Session != ident("one").Session() {
-		t.Fatalf("session = %q, want %q", up.Stack.Session, ident("one").Session())
-	}
-	if len(f.mux.started) != 1 || !f.mux.started[0].CreateSession {
-		t.Fatalf("started = %+v, want one window creating the session", f.mux.started)
+	if len(f.mux.started) != 0 {
+		t.Errorf("started = %v, want none", f.mux.startedNames())
 	}
 }

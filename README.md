@@ -1,6 +1,6 @@
 # svx
 
-Runs a repo's dev services as tmux windows. Run inside tmux, `svx up` adds the windows to the session you're in; outside tmux, each stack gets its own session. Each stack gets its own name, ports and variables, so several copies of one repo can run at once. tmux holds the processes, and a small state directory tells the menu bar what is running.
+Runs a repo's dev services as tmux windows. `svx up` runs inside tmux and adds the windows to the session you're in. Each stack gets its own name, ports and variables, so several copies of one repo can run at once. tmux holds the processes, and a small state directory tells the menu bar what is running.
 
 The design is in [SPEC.md](./SPEC.md). Where this implementation differs, the differences are listed under [Differences from the spec](#differences-from-the-spec).
 
@@ -149,9 +149,9 @@ Exit codes: 0 success, 1 a service failed or timed out, 2 a config or usage erro
 
 ## Windows and sessions
 
-Inside tmux, `svx up` adds the stack's windows to your current session, in the background, so your current window keeps focus. Outside tmux, it creates `svx-<project>-<stack>` and leaves it detached; `svx attach` gets you there. A running stack stays in the session it started in, whichever session a later command runs from.
+`svx up` adds the stack's windows to your current session, in the background, so your current window keeps focus. It refuses to run outside tmux: svx never creates sessions. A running stack stays in the session it started in, whichever session a later command runs from. Other commands, such as `down`, `restart` and the menu bar, work from anywhere.
 
-svx finds its windows by the `@svx_stack` and `@svx_service` window options, not by name, so your own windows are never touched. `svx down` closes only the stack's windows and never kills a session. A stack's own session ends with its last window.
+svx finds its windows by the `@svx_stack` and `@svx_service` window options, not by name, so your own windows are never touched. `svx down` closes only the stack's windows and never kills a session.
 
 ## Menu bar
 
@@ -208,7 +208,7 @@ Tests never touch your tmux server or state: they use `tmux -L svx-test-<random>
 
 - YAML instead of TOML: `svx.yaml` and `svx.local.yaml`.
 - The proxy and HTTPS milestone is not built. `url` and links always render as `http://127.0.0.1:<port>`.
-- Inside tmux, `svx up` adds windows to the current session instead of creating one session per stack. Windows are found by tag, and `down` closes windows rather than killing a session.
+- `svx up` must run inside tmux and adds windows to the current session instead of creating one session per stack. Windows are found by tag, and `down` closes windows rather than killing a session.
 - The menu bar is a native Cocoa status item run by `svx bar` (a launchd agent once installed), not SwiftBar. It is a long-running process, which the spec listed as a later option.
 - The menu bar is opt-out in the user config, and per project with `settings.menubar`.
 - The package layout follows ports and adapters rather than the spec's package table. The responsibilities match.
@@ -216,4 +216,4 @@ Tests never touch your tmux server or state: they use `tmux -L svx-test-<random>
 - A oneshot that already exited 0 counts as done on a repeat `up` and is not rerun. Use `svx restart <name>` to rerun it.
 - `svx restart` re-renders the config against the recorded slot, so config edits apply without moving ports.
 - `svx logs` takes `-n` to limit output to the last lines.
-- The public record adds `dir`, `menubar`, `service_order` and per-service `oneshot` fields. `session` is the session the stack runs in, which is not always `svx-<project>-<stack>`.
+- The public record adds `dir`, `menubar`, `service_order` and per-service `oneshot` fields. `session` is the session `up` ran from.

@@ -72,14 +72,11 @@ type WindowSpec struct {
 	Env map[string]string
 	// LogFile, when set, receives the pane's output.
 	LogFile string
-	// CreateSession makes the session with this as its first window.
-	CreateSession bool
 }
 
 // Multiplexer is svx's view of tmux.
 type Multiplexer interface {
 	Version(ctx context.Context) (string, error)
-	HasSession(ctx context.Context, session string) (bool, error)
 	// CurrentSession returns the session svx was run from, when it runs
 	// in a pane on the same tmux server.
 	CurrentSession(ctx context.Context) (string, bool, error)

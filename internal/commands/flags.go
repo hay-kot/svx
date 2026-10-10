@@ -5,7 +5,6 @@ import (
 
 	"github.com/urfave/cli/v3"
 
-	"github.com/hay-kot/svx/internal/adapters/tmux"
 	"github.com/hay-kot/svx/internal/app"
 	"github.com/hay-kot/svx/internal/config"
 )
@@ -27,9 +26,6 @@ type Flags struct {
 type Deps struct {
 	App    *app.App
 	Config config.Config
-	Mux    *tmux.Client
-	// Executable is svx's own absolute path.
-	Executable string
 }
 
 // stackFlags select a stack other than the current checkout's default.

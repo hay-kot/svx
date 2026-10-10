@@ -15,12 +15,9 @@ import (
 	"github.com/hay-kot/svx/internal/domain"
 )
 
-func (b *Bar) interval() time.Duration {
-	if b.Interval <= 0 {
-		return 2 * time.Second
-	}
-	return b.Interval
-}
+// pollInterval is how often state is re-read. tmux, not svx, notices a
+// service dying, so the menu has to poll to see it.
+const pollInterval = 2 * time.Second
 
 func (b *Bar) snapshot(ctx context.Context) Menu {
 	views, err := b.App.List(ctx)
@@ -33,7 +30,7 @@ func (b *Bar) snapshot(ctx context.Context) Menu {
 // watch draws the menu, then redraws whenever it changes. A send on
 // refresh re-reads state at once instead of on the next tick.
 func (b *Bar) watch(ctx context.Context, refresh <-chan struct{}, draw func(Menu)) {
-	tick := time.NewTicker(b.interval())
+	tick := time.NewTicker(pollInterval)
 	defer tick.Stop()
 	var last Menu
 	drawn := false
@@ -85,7 +82,9 @@ func (b *Bar) attach(ctx context.Context, id domain.Identity, service string) er
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	path := filepath.Join(dir, id.Key()+".command")
+	// One script per service: open returns before the terminal reads the
+	// file, so a shared path lets a second click overwrite the first.
+	path := filepath.Join(dir, id.Key()+"--"+service+".command")
 	if err := os.WriteFile(path, []byte(AttachScript(b.Executable, id, service, os.Getenv)), 0o700); err != nil { //nolint:gosec // the terminal must execute it
 		return err
 	}

@@ -40,7 +40,7 @@ func (cmd *RunCmd) run(ctx context.Context, c *cli.Command) error {
 	if c.Args().Len() != 2 {
 		return errors.New("usage: svx _run <project--stack> <service>")
 	}
-	plan, err := cmd.deps.App.PlanRun(c.Args().Get(0), c.Args().Get(1), environMap())
+	plan, err := cmd.deps.App.PlanRun(c.Args().Get(0), c.Args().Get(1), cmd.deps.App.Environ())
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func (cmd *RunCmd) waitForSetup(ctx context.Context) {
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if ok, err := cmd.deps.Mux.PaneReady(ctx, pane); err != nil || ok {
+		if ok, err := cmd.deps.App.Mux.PaneReady(ctx, pane); err != nil || ok {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)

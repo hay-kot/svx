@@ -37,8 +37,8 @@ func TestIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id.Session() != "svx-my-shop-amber-finch" || id.Key() != "my-shop--amber-finch" {
-		t.Fatalf("got session %q key %q", id.Session(), id.Key())
+	if id.Key() != "my-shop--amber-finch" {
+		t.Fatalf("got key %q", id.Key())
 	}
 	back, err := ParseKey(id.Key())
 	if err != nil || back != id {

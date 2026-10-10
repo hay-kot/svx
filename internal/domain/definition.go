@@ -150,6 +150,3 @@ func (d Definition) ServiceNames() []string {
 	}
 	return names
 }
-
-// HasPort reports whether the service declares a primary port.
-func (s ServiceDef) HasPort() bool { return s.Port.Set }

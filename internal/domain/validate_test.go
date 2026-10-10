@@ -54,15 +54,30 @@ func TestValidateErrors(t *testing.T) {
 }
 
 func TestStrideOverlapWarning(t *testing.T) {
-	def := sampleDef()
-	def.Services[0].Port = FixedPort(3000)
-	def.Services[1].Port = FixedPort(3010)
-	warnings, err := Validate(def)
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name  string
+		other int
+		want  int
+	}{
+		{name: "within slot range", other: 3010, want: 1},
+		{name: "beyond slot range", other: 8000, want: 0},
 	}
-	if len(warnings) != 1 || !strings.Contains(warnings[0], "collide across slots") {
-		t.Fatalf("warnings = %v", warnings)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			def := sampleDef()
+			def.Services[0].Port = FixedPort(3000)
+			def.Services[1].Port = FixedPort(tt.other)
+			warnings, err := Validate(def)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(warnings) != tt.want {
+				t.Fatalf("warnings = %v, want %d", warnings, tt.want)
+			}
+			if tt.want > 0 && !strings.Contains(warnings[0], "collide across slots") {
+				t.Fatalf("warnings = %v", warnings)
+			}
+		})
 	}
 }
 

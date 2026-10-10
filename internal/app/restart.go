@@ -55,7 +55,7 @@ func (a *App) Restart(ctx context.Context, req RestartRequest) (UpResult, error)
 		}
 	}
 
-	if _, err := a.stopServices(ctx, stack, req.Services); err != nil {
+	if err := a.stopServices(ctx, stack, req.Services); err != nil {
 		return UpResult{}, err
 	}
 	windows, err := a.Mux.Windows(ctx, stack.Session, stack.ID.Key())
@@ -74,20 +74,30 @@ func (a *App) Restart(ctx context.Context, req RestartRequest) (UpResult, error)
 	)
 	// Restarted services start level by level, as up starts them, so a
 	// whole-stack restart brings db back before the migration that needs
-	// it. Services in one level start together.
+	// it. Services in one level start together, and a service whose
+	// restarted dependency failed is skipped.
 	levels, err := domain.Levels(stack.ServiceDefs())
 	if err != nil {
 		return UpResult{}, err
 	}
-	noSession := func(create func(bool) error) error { return create(false) }
 	for _, level := range levels {
 		for _, name := range level {
 			if !slices.Contains(req.Services, name) {
 				continue
 			}
 			svc, _ := stack.Service(name)
+			mu.Lock()
+			dep, failed := failedDependency(svc, outcomes)
+			mu.Unlock()
+			if failed {
+				o := a.skip(svc, "dependency "+dep+" failed")
+				mu.Lock()
+				outcomes[name] = o
+				mu.Unlock()
+				continue
+			}
 			wg.Go(func() {
-				o := a.launch(ctx, stack, svc, ids[name], req.NoWait, noSession)
+				o := a.launch(ctx, stack, svc, ids[name], req.NoWait)
 				mu.Lock()
 				outcomes[name] = o
 				mu.Unlock()
@@ -96,11 +106,22 @@ func (a *App) Restart(ctx context.Context, req RestartRequest) (UpResult, error)
 		wg.Wait()
 	}
 
-	result := UpResult{Stack: stack, Outcomes: outcomes, Moved: nil, Reused: true}
+	result := UpResult{Stack: stack, Outcomes: outcomes, Moved: nil}
 	if failed := failedServices(stack, outcomes); len(failed) > 0 {
 		return result, &ServiceError{Services: failed}
 	}
 	return result, nil
+}
+
+// failedDependency reports a dependency of svc that failed or was skipped in
+// an earlier level.
+func failedDependency(svc domain.Service, outcomes map[string]Outcome) (string, bool) {
+	for _, dep := range svc.Depends {
+		if o, ok := outcomes[dep]; ok && (o.State == OutcomeFailed || o.State == OutcomeSkipped) {
+			return dep, true
+		}
+	}
+	return "", false
 }
 
 func (a *App) rerender(ctx context.Context, r resolved, prev domain.Stack) (domain.Stack, error) {

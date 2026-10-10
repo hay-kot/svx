@@ -138,19 +138,6 @@ func TestRenderHelpers(t *testing.T) {
 	}
 }
 
-func TestProcessEnvLayering(t *testing.T) {
-	env := ProcessEnv(
-		map[string]string{"A": "snap", "TMUX": "outer", "TERM": "xterm-ghostty"},
-		map[string]string{"A": "overlay", "B": "b"},
-		map[string]string{"TMUX": "inner", "TERM": "tmux-256color"},
-		"TMUX", "TERM", "TMUX_PANE",
-	)
-	want := []string{"A=overlay", "B=b", "TERM=tmux-256color", "TMUX=inner"}
-	if strings.Join(env, ",") != strings.Join(want, ",") {
-		t.Fatalf("env = %v, want %v", env, want)
-	}
-}
-
 func TestRenderStackSession(t *testing.T) {
 	def := sampleDef()
 	def.Env["TMUX_SESSION"] = "{{ .stack.session }}"

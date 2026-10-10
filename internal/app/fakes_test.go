@@ -42,7 +42,8 @@ type fakeWindow struct {
 }
 
 // fakeMux models tmux the way svx uses it: windows are tagged with their
-// stack and service, and a session ends when its last window closes.
+// stack and service, svx runs from a pane in current, and a session ends
+// when its last window closes.
 type fakeMux struct {
 	mu         sync.Mutex
 	log        *eventLog
@@ -50,7 +51,6 @@ type fakeMux struct {
 	nextPID    int
 	started    []WindowSpec
 	respawned  []WindowSpec
-	killed     []string
 	dieOnStart map[string]int
 	// current is the session svx runs in, "" for outside tmux.
 	current string
@@ -61,13 +61,6 @@ func newFakeMux(log *eventLog) *fakeMux {
 }
 
 func (m *fakeMux) Version(context.Context) (string, error) { return "tmux 3.4", nil }
-
-func (m *fakeMux) HasSession(_ context.Context, s string) (bool, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	_, ok := m.sessions[s]
-	return ok, nil
-}
 
 func (m *fakeMux) CurrentSession(context.Context) (string, bool, error) {
 	m.mu.Lock()
@@ -80,6 +73,13 @@ func (m *fakeMux) addSession(name string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sessions[name] = append(m.sessions[name], &fakeWindow{ID: "@user", Name: "zsh", PanePID: 1})
+}
+
+func (m *fakeMux) hasSession(name string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.sessions[name]
+	return ok
 }
 
 func (m *fakeMux) dropSession(name string) {
@@ -102,11 +102,7 @@ func (m *fakeMux) applyDie(w *fakeWindow) {
 func (m *fakeMux) StartWindow(_ context.Context, spec WindowSpec) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	_, exists := m.sessions[spec.Session]
-	switch {
-	case spec.CreateSession && exists:
-		return "", fmt.Errorf("duplicate session %s", spec.Session)
-	case !spec.CreateSession && !exists:
+	if _, exists := m.sessions[spec.Session]; !exists {
 		return "", fmt.Errorf("can't find session %s", spec.Session)
 	}
 	pid := m.newPID()
@@ -154,7 +150,6 @@ func (m *fakeMux) KillWindow(_ context.Context, id string) error {
 			delete(m.sessions, s)
 		}
 	}
-	m.killed = append(m.killed, id)
 	return nil
 }
 
@@ -178,19 +173,33 @@ func (m *fakeMux) removeWindow(session, name string) {
 	m.sessions[session] = slices.DeleteFunc(m.sessions[session], func(w *fakeWindow) bool { return w.Name == name })
 }
 
-// markDeadByPID kills the window whose pane leads pid's group.
-func (m *fakeMux) markDeadByPID(pid, code int) string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func (m *fakeMux) paneByPID(pid int) *fakeWindow {
 	for _, ws := range m.sessions {
 		for _, w := range ws {
 			if w.PanePID == pid {
-				w.Dead, w.ExitCode = true, code
-				return w.Name
+				return w
 			}
 		}
 	}
+	return nil
+}
+
+func (m *fakeMux) nameByPID(pid int) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if w := m.paneByPID(pid); w != nil {
+		return w.Name
+	}
 	return ""
+}
+
+// markDeadByPID kills the window whose pane leads pid's group.
+func (m *fakeMux) markDeadByPID(pid, code int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if w := m.paneByPID(pid); w != nil {
+		w.Dead, w.ExitCode = true, code
+	}
 }
 
 func (m *fakeMux) startedNames() []string {
@@ -216,11 +225,10 @@ func (m *fakeMux) respawnedNames() []string {
 func (m *fakeMux) resetCalls() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.started, m.respawned, m.killed = nil, nil, nil
+	m.started, m.respawned = nil, nil
 }
 
 type signalCall struct {
-	PID  int
 	Name string
 	Sig  syscall.Signal
 }
@@ -230,15 +238,30 @@ type fakeSignals struct {
 	mux   *fakeMux
 	log   *eventLog
 	calls []signalCall
+	// ignore names services that survive anything short of SIGKILL.
+	ignore map[string]bool
 }
 
 func (s *fakeSignals) SignalGroup(pid int, sig syscall.Signal) error {
-	name := s.mux.markDeadByPID(pid, 128+int(sig))
+	name := s.mux.nameByPID(pid)
+	if sig == syscall.SIGKILL || !s.ignore[name] {
+		s.mux.markDeadByPID(pid, 128+int(sig))
+	}
 	s.mu.Lock()
-	s.calls = append(s.calls, signalCall{PID: pid, Name: name, Sig: sig})
+	s.calls = append(s.calls, signalCall{Name: name, Sig: sig})
 	s.mu.Unlock()
 	s.log.add("signal:" + name)
 	return nil
+}
+
+func (s *fakeSignals) sigs() []syscall.Signal {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]syscall.Signal, len(s.calls))
+	for i, c := range s.calls {
+		out[i] = c.Sig
+	}
+	return out
 }
 
 func (s *fakeSignals) names() []string {
@@ -336,15 +359,11 @@ type fakeReady struct {
 	mu       sync.Mutex
 	log      *eventLog
 	failures map[int]int
-	broken   map[int]bool
 }
 
 func (r *fakeReady) Probe(_ context.Context, p Probe) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.broken[p.Port] {
-		return errors.New("broken")
-	}
 	if r.failures[p.Port] > 0 {
 		r.failures[p.Port]--
 		return errors.New("not yet")
@@ -378,13 +397,15 @@ func newTestApp(t *testing.T, def domain.Definition) (*App, *fakes) {
 	t.Helper()
 	log := &eventLog{}
 	mux := newFakeMux(log)
+	mux.addSession("work")
+	mux.current = "work"
 	f := &fakes{
 		log:      log,
 		mux:      mux,
 		signals:  &fakeSignals{mux: mux, log: log},
 		store:    newFakeStore(),
 		ports:    &fakePorts{busy: map[int]bool{}, next: 40000},
-		ready:    &fakeReady{log: log, failures: map[int]int{}, broken: map[int]bool{}},
+		ready:    &fakeReady{log: log, failures: map[int]int{}},
 		projects: &fakeProjects{project: Project{Def: def, Root: "/src/shop", CheckoutName: "shop"}},
 	}
 	a := &App{

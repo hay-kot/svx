@@ -64,9 +64,10 @@ func (a *App) Open(ctx context.Context, t Target, label string) (domain.Link, er
 	return domain.Link{}, usage(fmt.Errorf("no link %q, links: %s", label, strings.Join(labels, ", ")))
 }
 
-// Preview renders the stack without starting anything. A stack with a live
-// session keeps its recorded slot. Otherwise the slot is what `up` would pick
-// right now, though nothing is reserved.
+// Preview renders the stack without starting anything. A running stack
+// keeps its recorded slot and session. Otherwise the slot is what `up` would
+// pick right now, though nothing is reserved, and the session is the one svx
+// runs in, empty outside tmux.
 func (a *App) Preview(ctx context.Context, t Target) (domain.Stack, []string, error) {
 	r, err := a.resolve(t, true)
 	if err != nil {
@@ -77,46 +78,24 @@ func (a *App) Preview(ctx context.Context, t Target) (domain.Stack, []string, er
 		return domain.Stack{}, nil, err
 	}
 
-	prev, found, err := a.Store.Load(r.id)
+	prev, err := a.loadPrevious(ctx, r.id)
 	if err != nil {
 		return domain.Stack{}, nil, err
 	}
-	alive := false
-	if found {
-		if alive, err = a.stackAlive(ctx, &prev); err != nil {
-			return domain.Stack{}, nil, err
-		}
+	session, _, err := a.Mux.CurrentSession(ctx)
+	if err != nil {
+		return domain.Stack{}, nil, err
 	}
-
-	var (
-		slot    int
-		ports   domain.PortTable
-		session string
-	)
-	if alive {
-		slot, session = prev.Slot, prev.Session
-		ports, err = a.slotPorts(r.project.Def, slot, prev.Ports())
-	} else {
-		if session, _, err = a.pickSession(ctx, r.id); err != nil {
-			return domain.Stack{}, nil, err
-		}
-		var prevPtr *domain.Stack
-		if found {
-			prevPtr = &prev
-		}
-		var alloc allocation
-		alloc, err = a.allocate(ctx, r.project.Def, r.id, prevPtr)
-		slot, ports = alloc.slot, alloc.ports
-	}
+	pl, err := a.place(ctx, r.project.Def, r.id, prev, session)
 	if err != nil {
 		return domain.Stack{}, nil, err
 	}
 
-	stack, err := a.render(r, slot, session, ports, a.Environ())
+	stack, err := a.render(r, pl.slot, pl.session, pl.ports, a.Environ())
 	if err != nil {
 		return domain.Stack{}, nil, err
 	}
-	if !alive {
+	if !prev.alive {
 		stack.Status = domain.StackDown
 	}
 	return stack, warnings, nil
@@ -171,76 +150,4 @@ func (a *App) LogFile(_ context.Context, t Target, service string) (string, erro
 		return "", usage(fmt.Errorf("logs are off for this project, set settings.logs: true or use `svx attach %s`", service))
 	}
 	return svc.LogFile, nil
-}
-
-// RunPlan is what the shim needs to exec a service.
-type RunPlan struct {
-	Dir     string
-	Argv    []string
-	Env     []string
-	Banner  string
-	LogFile string
-}
-
-// PaneOwned lists variables a pane sets for itself, which must win over the
-// snapshot. The snapshot comes from wherever `svx up` ran, which may be
-// another terminal or another tmux session.
-var PaneOwned = []string{"TMUX", "TMUX_PANE", "TERM"}
-
-// PlanRun reads the recorded stack and prepares one service's exec.
-func (a *App) PlanRun(key, service string, current map[string]string) (RunPlan, error) {
-	id, err := domain.ParseKey(key)
-	if err != nil {
-		return RunPlan{}, usage(err)
-	}
-	stack, err := a.loadStack(id)
-	if err != nil {
-		return RunPlan{}, err
-	}
-	svc, ok := stack.Service(service)
-	if !ok {
-		return RunPlan{}, usage(fmt.Errorf("stack %s has no service %q", id, service))
-	}
-
-	banner := fmt.Sprintf("%s%s %s", domain.BannerPrefix, id, svc.Name)
-	if p, ok := svc.MainPort(); ok {
-		banner += fmt.Sprintf(" on %d", p)
-	}
-	banner += " -- " + svc.Run
-
-	return RunPlan{
-		Dir:     svc.Dir,
-		Argv:    []string{"/bin/sh", "-c", svc.Run},
-		Env:     domain.ProcessEnv(stack.Snapshot, svc.Env, current, PaneOwned...),
-		Banner:  banner,
-		LogFile: svc.LogFile,
-	}, nil
-}
-
-// Init writes a starter config.
-func (a *App) Init(dir string) ([]string, error) {
-	return a.Projects.Init(dir)
-}
-
-// StaleStacks marks down every record whose session is gone and returns
-// them.
-func (a *App) StaleStacks(ctx context.Context) ([]domain.Identity, error) {
-	records, err := a.Store.List()
-	if err != nil {
-		return nil, err
-	}
-	var stale []domain.Identity
-	for i := range records {
-		if records[i].Status != domain.StackUp {
-			continue
-		}
-		alive, err := a.stackAlive(ctx, &records[i])
-		if err != nil {
-			return nil, err
-		}
-		if !alive {
-			stale = append(stale, records[i].ID)
-		}
-	}
-	return stale, nil
 }

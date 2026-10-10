@@ -48,6 +48,8 @@ func (s statusJSON) port(service string) int {
 	return 0
 }
 
+func (s statusJSON) key() string { return s.Project + "--" + s.Stack }
+
 func (s statusJSON) state(service string) string {
 	for _, svc := range s.Services {
 		if svc.Name == service {
@@ -104,11 +106,12 @@ func TestTwoCheckoutsRunSideBySide(t *testing.T) {
 	if out, err := h.Run(a, "down"); err != nil {
 		t.Fatalf("down: %v\n%s", err, out)
 	}
-	if _, err := h.Tmux("has-session", "-t", "="+sa.Session); err == nil {
-		t.Fatal("session a still exists after down")
+	windows := h.StackWindows()
+	if strings.Contains(windows, sa.key()) {
+		t.Fatalf("a's windows survived down:\n%s", windows)
 	}
-	if _, err := h.Tmux("has-session", "-t", "="+sb.Session); err != nil {
-		t.Fatal("down in a stopped b")
+	if !strings.Contains(windows, sb.key()) {
+		t.Fatalf("down in a stopped b:\n%s", windows)
 	}
 	if got := status(t, h, b); got.Status != "up" || got.state("web") != "running" {
 		t.Fatalf("b after a's down: %+v", got)
@@ -131,9 +134,8 @@ func TestNamedStacksFromOneCheckout(t *testing.T) {
 			t.Fatalf("up %s: %v\n%s", name, err, out)
 		}
 	}
-	out, _ := h.Tmux("list-sessions", "-F", "#{session_name} #{@svx_stack}")
-	if !strings.Contains(out, "svx-sample-one sample--one") || !strings.Contains(out, "svx-sample-two sample--two") {
-		t.Fatalf("sessions:\n%s", out)
+	if windows := h.StackWindows(); !strings.Contains(windows, "sample--one") || !strings.Contains(windows, "sample--two") {
+		t.Fatalf("windows:\n%s", windows)
 	}
 }
 
@@ -232,7 +234,7 @@ func TestConfigRendersWithoutStarting(t *testing.T) {
 	if !strings.Contains(out, "API_URL: http://127.0.0.1:18080") || !strings.Contains(out, "status: down") {
 		t.Fatalf("config output:\n%s", out)
 	}
-	if sessions, _ := h.Tmux("list-sessions"); strings.Contains(sessions, "svx-sample") {
-		t.Fatalf("config started something:\n%s", sessions)
+	if windows := h.StackWindows(); strings.Contains(windows, "sample--") {
+		t.Fatalf("config started something:\n%s", windows)
 	}
 }

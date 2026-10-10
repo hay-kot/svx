@@ -18,7 +18,8 @@ const commandTimeout = 90 * time.Second
 
 // Harness runs the built CLI with isolated state: its own XDG directories,
 // its own state directory, and a private tmux server that cleanup kills. It
-// never touches the developer's tmux server or real state.
+// never touches the developer's tmux server or real state. Commands run as
+// if from a pane in the server's "work" session, since svx up needs tmux.
 type Harness struct {
 	t         *testing.T
 	homeDir   string
@@ -27,6 +28,8 @@ type Harness struct {
 	configDir string
 	stateDir  string
 	socket    string
+	// tmuxEnv is TMUX and TMUX_PANE for a pane in the work session.
+	tmuxEnv []string
 }
 
 // NewHarness creates an integration test harness.
@@ -51,7 +54,28 @@ func NewHarness(t *testing.T) *Harness {
 			_ = os.Remove(path)
 		}
 	})
+	// The server's environment is what svx's windows inherit, so it starts
+	// with the same isolated environment as the CLI.
+	start := exec.CommandContext(t.Context(), "tmux", "-L", h.socket, "-f", "/dev/null", //nolint:gosec // the harness private socket
+		"new-session", "-d", "-s", "work", "-P", "-F", "#{socket_path}|#{pane_id}", "sleep", "3600")
+	start.Env = h.env()
+	out, err := start.CombinedOutput()
+	if err != nil {
+		t.Fatalf("starting the harness tmux session: %v\n%s", err, string(out))
+	}
+	socketPath, pane, _ := strings.Cut(strings.TrimSpace(string(out)), "|")
+	h.tmuxEnv = []string{"TMUX=" + socketPath + ",1,0", "TMUX_PANE=" + pane}
 	return h
+}
+
+// StackWindows lists the stack tag of every window on the private server.
+func (h *Harness) StackWindows() string {
+	h.t.Helper()
+	out, err := h.Tmux("list-windows", "-a", "-F", "#{@svx_stack}")
+	if err != nil {
+		h.t.Fatalf("list-windows: %v\n%s", err, out)
+	}
+	return out
 }
 
 // Run executes the CLI from dir and returns combined stdout/stderr output.
@@ -95,7 +119,12 @@ func (h *Harness) command(args ...string) *exec.Cmd {
 	h.t.Cleanup(cancel)
 
 	cmd := exec.CommandContext(ctx, cliBin, args...) //nolint:gosec // the binary under test
-	cmd.Env = []string{
+	cmd.Env = append(h.env(), h.tmuxEnv...)
+	return cmd
+}
+
+func (h *Harness) env() []string {
+	return []string{
 		"PATH=" + os.Getenv("PATH"),
 		"TMPDIR=" + os.Getenv("TMPDIR"),
 		"TERM=" + os.Getenv("TERM"),
@@ -110,5 +139,4 @@ func (h *Harness) command(args ...string) *exec.Cmd {
 		"LOG_FILE=" + filepath.Join(h.dataDir, "svx.log"),
 		"NO_COLOR=1",
 	}
-	return cmd
 }

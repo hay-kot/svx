@@ -1,5 +1,5 @@
 // Package menubar is svx's macOS menu bar app. It shows running stacks
-// with their links and lets you attach to or stop one.
+// with their links and lets you restart, attach to or stop one.
 //
 // The Cocoa side follows Wails v3's system tray
 // (v3/pkg/application/systemtray_darwin.m): an NSStatusItem with an NSMenu

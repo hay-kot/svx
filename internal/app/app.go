@@ -188,19 +188,51 @@ func (a *App) stackAlive(ctx context.Context, stack *domain.Stack) (bool, error)
 	return alive, err
 }
 
-// pickSession chooses where a stack that is not running starts: the session
-// svx runs in, so its windows show up beside the user's own, or outside
-// tmux the stack's own session.
-func (a *App) pickSession(ctx context.Context, id domain.Identity) (string, bool, error) {
-	cur, inside, err := a.Mux.CurrentSession(ctx)
+// previous is a stack's last record and whether it still runs.
+type previous struct {
+	// stack is nil when the stack has no record.
+	stack   *domain.Stack
+	windows []Window
+	alive   bool
+}
+
+func (a *App) loadPrevious(ctx context.Context, id domain.Identity) (previous, error) {
+	stack, found, err := a.Store.Load(id)
+	if err != nil || !found {
+		return previous{}, err
+	}
+	windows, alive, err := a.stackWindows(ctx, &stack)
 	if err != nil {
-		return "", false, err
+		return previous{}, err
 	}
-	if inside {
-		return cur, true, nil
+	return previous{stack: &stack, windows: windows, alive: alive}, nil
+}
+
+// placement is where a stack runs.
+type placement struct {
+	slot    int
+	ports   domain.PortTable
+	session string
+	// moved lists ports that changed because the previous slot was taken.
+	moved []string
+}
+
+// place keeps a running stack's slot and session. A stopped stack gets a
+// slot from allocate, which prefers its previous one, in session.
+func (a *App) place(ctx context.Context, def domain.Definition, id domain.Identity, prev previous, session string) (placement, error) {
+	if prev.alive {
+		ports, err := a.slotPorts(def, prev.stack.Slot, prev.stack.Ports())
+		return placement{slot: prev.stack.Slot, ports: ports, session: prev.stack.Session}, err
 	}
-	exists, err := a.Mux.HasSession(ctx, id.Session())
-	return id.Session(), exists, err
+	alloc, err := a.allocate(ctx, def, id, prev.stack)
+	if err != nil {
+		return placement{}, err
+	}
+	pl := placement{slot: alloc.slot, ports: alloc.ports, session: session}
+	if prev.stack != nil && prev.stack.Slot != alloc.slot {
+		pl.moved = portMoves(prev.stack.Ports(), alloc.ports)
+	}
+	return pl, nil
 }
 
 func (a *App) render(r resolved, slot int, session string, ports domain.PortTable, environ map[string]string) (domain.Stack, error) {
@@ -236,4 +268,9 @@ func (a *App) slotPorts(def domain.Definition, slot int, prev domain.PortTable) 
 		table.Set(ref.Service, ref.Name, p)
 	}
 	return table, nil
+}
+
+// Init writes a starter config.
+func (a *App) Init(dir string) ([]string, error) {
+	return a.Projects.Init(dir)
 }

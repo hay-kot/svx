@@ -18,11 +18,6 @@ func DataDir() (string, error) {
 	return appDir("XDG_DATA_HOME", ".local", "share")
 }
 
-// CacheDir returns the XDG cache directory for the application.
-func CacheDir() (string, error) {
-	return appDir("XDG_CACHE_HOME", ".cache")
-}
-
 func appDir(envName string, fallbackParts ...string) (string, error) {
 	if dir := os.Getenv(envName); dir != "" {
 		return filepath.Join(dir, appName), nil

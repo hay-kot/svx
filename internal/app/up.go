@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -26,8 +27,6 @@ type UpResult struct {
 	Outcomes map[string]Outcome
 	// Moved lists ports that changed because the previous slot was taken.
 	Moved []string
-	// Reused is true when the session already existed.
-	Reused bool
 }
 
 // OutcomeState is what happened to one service during up or restart.
@@ -48,9 +47,22 @@ type Outcome struct {
 	Elapsed time.Duration
 }
 
-// Up brings a stack up. It is safe to repeat: running windows are left alone
-// and only missing or dead ones start.
+// errOutsideTmux is returned by Up when svx does not run in a pane on its
+// tmux server. svx never creates sessions: a stack's windows go in the
+// session up runs from.
+var errOutsideTmux = errors.New("svx up runs inside tmux, start a session with `tmux new` and run it there")
+
+// Up brings a stack up in the session it runs from. It is safe to repeat:
+// running windows are left alone and only missing or dead ones start.
 func (a *App) Up(ctx context.Context, req UpRequest) (UpResult, error) {
+	session, inside, err := a.Mux.CurrentSession(ctx)
+	if err != nil {
+		return UpResult{}, err
+	}
+	if !inside {
+		return UpResult{}, usage(errOutsideTmux)
+	}
+
 	r, err := a.loadValidated(req.Target)
 	if err != nil {
 		return UpResult{}, err
@@ -62,7 +74,7 @@ func (a *App) Up(ctx context.Context, req UpRequest) (UpResult, error) {
 		return UpResult{}, usage(err)
 	}
 
-	stack, p, err := a.prepare(ctx, r)
+	stack, p, err := a.prepare(ctx, r, session)
 	if err != nil {
 		return UpResult{}, err
 	}
@@ -76,10 +88,10 @@ func (a *App) Up(ctx context.Context, req UpRequest) (UpResult, error) {
 		}
 	}
 
-	run := &runner{app: a, stack: stack, sessionExists: p.sessionExists, noWait: req.NoWait}
+	run := &runner{app: a, stack: stack, noWait: req.NoWait}
 	outcomes := run.start(ctx, targets, p.windows)
 
-	result := UpResult{Stack: stack, Outcomes: outcomes, Moved: p.moved, Reused: p.reused}
+	result := UpResult{Stack: stack, Outcomes: outcomes, Moved: p.moved}
 	if failed := failedServices(stack, outcomes); len(failed) > 0 {
 		return result, &ServiceError{Services: failed}
 	}
@@ -88,74 +100,40 @@ func (a *App) Up(ctx context.Context, req UpRequest) (UpResult, error) {
 
 // prepared is what Up needs to know about where a stack runs.
 type prepared struct {
-	// reused is true when the stack was already running.
-	reused        bool
-	sessionExists bool
-	windows       []Window
-	moved         []string
+	windows []Window
+	moved   []string
 }
 
 // prepare settles the stack's slot and session and renders it, under the
 // state lock. A running stack keeps its session; a stopped one starts in
-// the session svx runs in, or its own outside tmux.
-func (a *App) prepare(ctx context.Context, r resolved) (domain.Stack, prepared, error) {
-	var p prepared
+// session, the one svx runs in.
+func (a *App) prepare(ctx context.Context, r resolved, session string) (domain.Stack, prepared, error) {
 	unlock, err := a.Store.Lock(ctx)
 	if err != nil {
-		return domain.Stack{}, p, err
+		return domain.Stack{}, prepared{}, err
 	}
 	defer unlock()
 
-	prev, found, err := a.Store.Load(r.id)
+	prev, err := a.loadPrevious(ctx, r.id)
 	if err != nil {
-		return domain.Stack{}, p, err
+		return domain.Stack{}, prepared{}, err
 	}
-	var prevPtr *domain.Stack
-	if found {
-		prevPtr = &prev
-		p.windows, p.reused, err = a.stackWindows(ctx, &prev)
-		if err != nil {
-			return domain.Stack{}, p, err
-		}
+	pl, err := a.place(ctx, r.project.Def, r.id, prev, session)
+	if err != nil {
+		return domain.Stack{}, prepared{}, err
 	}
 
-	var (
-		slot    int
-		ports   domain.PortTable
-		session string
-	)
-	if p.reused {
-		slot, session, p.sessionExists = prev.Slot, prev.Session, true
-		ports, err = a.slotPorts(r.project.Def, slot, prev.Ports())
-		if err != nil {
-			return domain.Stack{}, p, err
-		}
-	} else {
-		session, p.sessionExists, err = a.pickSession(ctx, r.id)
-		if err != nil {
-			return domain.Stack{}, p, err
-		}
-		alloc, err := a.allocate(ctx, r.project.Def, r.id, prevPtr)
-		if err != nil {
-			return domain.Stack{}, p, err
-		}
-		slot, ports = alloc.slot, alloc.ports
-		if found && prev.Slot != slot {
-			p.moved = portMoves(prev.Ports(), ports)
-		}
-	}
-
-	stack, err := a.render(r, slot, session, ports, a.Environ())
+	stack, err := a.render(r, pl.slot, pl.session, pl.ports, a.Environ())
 	if err != nil {
-		return domain.Stack{}, p, err
+		return domain.Stack{}, prepared{}, err
 	}
-	if p.reused && !prev.StartedAt.IsZero() {
-		stack.StartedAt = prev.StartedAt
+	if prev.alive && !prev.stack.StartedAt.IsZero() {
+		stack.StartedAt = prev.stack.StartedAt
 	}
 	if err := a.Store.Save(stack); err != nil {
-		return domain.Stack{}, p, err
+		return domain.Stack{}, prepared{}, err
 	}
-	return stack, p, nil
+	return stack, prepared{windows: prev.windows, moved: pl.moved}, nil
 }
 
 func failedServices(stack domain.Stack, outcomes map[string]Outcome) []string {
@@ -171,11 +149,9 @@ func failedServices(stack domain.Stack, outcomes map[string]Outcome) []string {
 // runner starts services in dependency order. Every target gets a goroutine
 // that waits on its dependencies, so independent services start together.
 type runner struct {
-	app           *App
-	stack         domain.Stack
-	noWait        bool
-	sessionMu     sync.Mutex
-	sessionExists bool
+	app    *App
+	stack  domain.Stack
+	noWait bool
 }
 
 type doneSignal struct {
@@ -230,11 +206,11 @@ func (r *runner) startOne(ctx context.Context, svc domain.Service, done map[stri
 		d := done[dep]
 		select {
 		case <-ctx.Done():
-			return r.skip(svc, "interrupted")
+			return r.app.skip(svc, "interrupted")
 		case <-d.ch:
 		}
 		if !d.ok {
-			return r.skip(svc, "dependency "+dep+" failed")
+			return r.app.skip(svc, "dependency "+dep+" failed")
 		}
 	}
 
@@ -249,7 +225,7 @@ func (r *runner) startOne(ctx context.Context, svc domain.Service, done map[stri
 		}
 	}
 
-	return r.app.launch(ctx, r.stack, svc, windows[svc.Name].ID, r.noWait, r.ensureSession)
+	return r.app.launch(ctx, r.stack, svc, windows[svc.Name].ID, r.noWait)
 }
 
 func pendingDeps(svc domain.Service, done map[string]*doneSignal) []string {
@@ -264,20 +240,8 @@ func pendingDeps(svc domain.Service, done map[string]*doneSignal) []string {
 	return pending
 }
 
-// ensureSession serialises the first window so exactly one goroutine creates
-// the session. It reports whether the caller must create it.
-func (r *runner) ensureSession(create func(bool) error) error {
-	r.sessionMu.Lock()
-	defer r.sessionMu.Unlock()
-	if err := create(!r.sessionExists); err != nil {
-		return err
-	}
-	r.sessionExists = true
-	return nil
-}
-
-func (r *runner) skip(svc domain.Service, why string) Outcome {
-	r.app.emit(Event{Kind: EventSkipped, Service: svc.Name, Detail: why, Elapsed: 0})
+func (a *App) skip(svc domain.Service, why string) Outcome {
+	a.emit(Event{Kind: EventSkipped, Service: svc.Name, Detail: why, Elapsed: 0})
 	return Outcome{State: OutcomeSkipped, Detail: why, Elapsed: 0}
 }
 
@@ -289,7 +253,6 @@ func (a *App) launch(
 	svc domain.Service,
 	window string,
 	noWait bool,
-	withSession func(func(create bool) error) error,
 ) Outcome {
 	a.emit(Event{Kind: EventStarting, Service: svc.Name, Detail: "", Elapsed: 0})
 
@@ -299,15 +262,13 @@ func (a *App) launch(
 	}
 
 	spec := a.windowSpec(stack, svc)
-	err := withSession(func(create bool) error {
-		if window != "" {
-			spec.Window = window
-			return a.Mux.RespawnWindow(ctx, spec)
-		}
-		spec.CreateSession = create
-		_, err := a.Mux.StartWindow(ctx, spec)
-		return err
-	})
+	var err error
+	if window != "" {
+		spec.Window = window
+		err = a.Mux.RespawnWindow(ctx, spec)
+	} else {
+		_, err = a.Mux.StartWindow(ctx, spec)
+	}
 	if err != nil {
 		a.emit(Event{Kind: EventFailed, Service: svc.Name, Detail: err.Error(), Elapsed: 0})
 		return Outcome{State: OutcomeFailed, Detail: err.Error(), Elapsed: 0}
@@ -329,9 +290,8 @@ func (a *App) windowSpec(stack domain.Stack, svc domain.Service) WindowSpec {
 		Command: []string{a.Executable, "_run", stack.ID.Key(), svc.Name},
 		// The shim finds the state directory through this, since the tmux
 		// server's environment may predate any override.
-		Env:           map[string]string{"SVX_STATE_DIR": a.Store.Dir()},
-		LogFile:       svc.LogFile,
-		CreateSession: false,
+		Env:     map[string]string{"SVX_STATE_DIR": a.Store.Dir()},
+		LogFile: svc.LogFile,
 	}
 }
 

@@ -66,7 +66,7 @@ func (cmd *BarCmd) run(ctx context.Context, _ *cli.Command) error {
 
 	if cmd.install {
 		logPath := filepath.Join(cmd.deps.App.Store.Dir(), "menubar.log")
-		plist := menubar.Plist(cmd.deps.Executable, logPath, menubar.AgentEnv(os.Getenv))
+		plist := menubar.Plist(cmd.deps.App.Executable, logPath, menubar.AgentEnv(os.Getenv))
 		path, err := menubar.InstallAgent(ctx, plist)
 		if err != nil {
 			return err
@@ -77,9 +77,8 @@ func (cmd *BarCmd) run(ctx context.Context, _ *cli.Command) error {
 
 	bar := &menubar.Bar{
 		App:        cmd.deps.App,
-		Executable: cmd.deps.Executable,
+		Executable: cmd.deps.App.Executable,
 		Terminal:   cmd.deps.Config.MenuBar.Terminal,
-		Interval:   0,
 	}
 	return bar.Run(ctx)
 }

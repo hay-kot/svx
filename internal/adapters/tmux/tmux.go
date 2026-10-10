@@ -104,7 +104,7 @@ func gone(err error) bool {
 	if !ok {
 		return false
 	}
-	for _, s := range []string{"can't find session", "no server running", "can't find window", "error connecting to", "no such file or directory"} {
+	for _, s := range []string{"can't find session", "no server running", "can't find window", "error connecting to"} {
 		if strings.Contains(te.Output, s) {
 			return true
 		}
@@ -113,7 +113,7 @@ func gone(err error) bool {
 }
 
 // sessionTarget matches a session by exact name. Without "=", tmux falls
-// back to prefix matching and "svx-a-b" would find "svx-a-bc".
+// back to prefix matching and "work" would find "work-2".
 func sessionTarget(session string) string { return "=" + session }
 
 // Version returns `tmux -V` output, such as "tmux 3.4".
@@ -123,19 +123,6 @@ func (c *Client) Version(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("running tmux -V: %w", err)
 	}
 	return strings.TrimSpace(string(out)), nil
-}
-
-// HasSession reports whether the session exists. A server that is not
-// running holds no sessions.
-func (c *Client) HasSession(ctx context.Context, session string) (bool, error) {
-	_, err := c.run(ctx, "has-session", "-t", sessionTarget(session))
-	if err == nil {
-		return true, nil
-	}
-	if _, ok := errors.AsType[*Error](err); ok {
-		return false, nil
-	}
-	return false, err
 }
 
 // Window user options svx tags its windows with. Windows are found by tag,
@@ -165,21 +152,16 @@ func (c *Client) CurrentSession(ctx context.Context) (string, bool, error) {
 	return session, true, nil
 }
 
-// StartWindow creates a detached window, and the session with it when
-// asked, then tags and configures it.
+// StartWindow creates a detached window in an existing session, then tags
+// and configures it. remain-on-exit is set per window
+// because a session-level setting does not reach windows created later.
 //
 // tmux cannot target a window created earlier in the same invocation, so
 // setup is a second call. A fast command could exit before it, taking its
 // window and exit status with it. svx windows run the _run shim, which
 // waits for PaneReady first, and setup sets the service tag last.
 func (c *Client) StartWindow(ctx context.Context, spec app.WindowSpec) (string, error) {
-	var args []string
-	if spec.CreateSession {
-		args = append(args, "new-session", "-d", "-s", spec.Session, "-x", "200", "-y", "50")
-	} else {
-		args = append(args, "new-window", "-d", "-t", sessionTarget(spec.Session)+":")
-	}
-	args = append(args, "-n", spec.Service, "-P", "-F", "#{window_id}")
+	args := []string{"new-window", "-d", "-t", sessionTarget(spec.Session) + ":", "-n", spec.Service, "-P", "-F", "#{window_id}"}
 	if spec.Dir != "" {
 		args = append(args, "-c", spec.Dir)
 	}
@@ -342,22 +324,4 @@ func (c *Client) PaneReady(ctx context.Context, pane string) (bool, error) {
 		return false, err
 	}
 	return strings.TrimSpace(out) != "", nil
-}
-
-// Option reads a session user option such as @svx_stack.
-func (c *Client) Option(ctx context.Context, session, name string) (string, error) {
-	out, err := c.run(ctx, "show-options", "-v", "-t", sessionTarget(session)+":", name)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(out), nil
-}
-
-// KillServer stops the server. Only tests on a private socket use it.
-func (c *Client) KillServer(ctx context.Context) error {
-	_, err := c.run(ctx, "kill-server")
-	if err != nil && !gone(err) {
-		return err
-	}
-	return nil
 }

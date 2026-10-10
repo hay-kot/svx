@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/urfave/cli/v3"
+
+	"github.com/hay-kot/svx/internal/domain"
 )
 
 // StatusCmd implements the status command. Bare `svx` runs it too.
@@ -80,7 +82,7 @@ func (cmd *LsCmd) run(ctx context.Context, _ *cli.Command) error {
 		for _, v := range views {
 			stacks = append(stacks, toJSONStack(v))
 		}
-		return writeJSON(os.Stdout, map[string]any{"version": 1, "stacks": stacks})
+		return writeJSON(os.Stdout, map[string]any{"version": domain.RecordVersion, "stacks": stacks})
 	}
 
 	if len(views) == 0 {
@@ -94,7 +96,7 @@ func (cmd *LsCmd) run(ctx context.Context, _ *cli.Command) error {
 		s := v.Stack
 		status := st.dim(string(s.Status))
 		services := "-"
-		if s.Status == "up" {
+		if s.Status == domain.StackUp {
 			status = st.green(string(s.Status))
 			services = fmt.Sprintf("%d/%d running", v.Running(), len(v.Services))
 		}

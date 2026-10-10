@@ -111,9 +111,12 @@ func (cmd *DoctorCmd) run(ctx context.Context, _ *cli.Command) error {
 	cmd.menuBarChecks(ctx, add)
 
 	if cmd.flags.JSON {
-		return writeJSON(os.Stdout, map[string]any{"version": domain.RecordVersion, "checks": checks})
+		if err := writeJSON(os.Stdout, map[string]any{"version": domain.RecordVersion, "checks": checks}); err != nil {
+			return err
+		}
+	} else {
+		printChecks(os.Stdout, newStyle(os.Stdout, cmd.flags.NoColor), checks)
 	}
-	printChecks(os.Stdout, newStyle(os.Stdout, cmd.flags.NoColor), checks)
 	for _, c := range checks {
 		if c.Status == checkFail {
 			return errors.New("doctor found problems")
@@ -140,7 +143,7 @@ func (cmd *DoctorCmd) menuBarChecks(ctx context.Context, add func(checkStatus, s
 	switch {
 	case err != nil:
 		add(checkInfo, "menu bar", "not set to start at login, run svx bar --install")
-	case !strings.Contains(string(data), cmd.deps.Executable):
+	case !strings.Contains(string(data), cmd.deps.App.Executable):
 		add(checkWarn, "menu bar", path+" starts a different svx, run svx bar --install")
 	case !menubar.AgentLoaded(ctx):
 		add(checkWarn, "menu bar", path+" is not loaded, run svx bar --install")

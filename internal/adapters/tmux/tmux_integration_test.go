@@ -32,7 +32,7 @@ func newTestClient(t *testing.T) *Client {
 	t.Cleanup(func() {
 		// tmux leaves its socket file behind when the server exits.
 		socket, _ := c.run(context.Background(), "display-message", "-p", "#{socket_path}")
-		_ = c.KillServer(context.Background())
+		_, _ = c.run(context.Background(), "kill-server")
 		if socket = strings.TrimSpace(socket); socket != "" {
 			_ = os.Remove(socket)
 		}
@@ -73,10 +73,10 @@ func gated(c *Client, script string) []string {
 	return []string{"sh", "-c", wait + script}
 }
 
-func startWindow(t *testing.T, c *Client, session, service string, create bool, cmd ...string) string {
+func startWindow(t *testing.T, c *Client, session, service string, cmd ...string) string {
 	t.Helper()
 	id, err := c.StartWindow(t.Context(), app.WindowSpec{
-		Session: session, Stack: testStack, Service: service, Command: cmd, CreateSession: create,
+		Session: session, Stack: testStack, Service: service, Command: cmd,
 	})
 	if err != nil {
 		t.Fatalf("StartWindow: %v", err)
@@ -96,11 +96,12 @@ func userSession(t *testing.T, c *Client, name string) string {
 }
 
 // A command that exits as soon as setup allows still leaves its window,
-// with its exit status readable, in a new session and in an existing one.
+// with its exit status readable.
 func TestFastExitKeepsWindow(t *testing.T) {
 	c := newTestClient(t)
-	startWindow(t, c, "s1", "first", true, gated(c, "exit 7")...)
-	startWindow(t, c, "s1", "second", false, gated(c, "exit 3")...)
+	userSession(t, c, "s1")
+	startWindow(t, c, "s1", "first", gated(c, "exit 7")...)
+	startWindow(t, c, "s1", "second", gated(c, "exit 3")...)
 
 	for name, code := range map[string]int{"first": 7, "second": 3} {
 		waitFor(t, name+" to die", func() bool {
@@ -110,28 +111,12 @@ func TestFastExitKeepsWindow(t *testing.T) {
 	}
 }
 
-// Setting remain-on-exit on the session does not reach windows created
-// later, which is why svx sets it per window.
-func TestRemainOnExitOnSessionDoesNotApplyToNewWindows(t *testing.T) {
-	c := newTestClient(t)
-	userSession(t, c, "s2")
-	if _, err := c.run(t.Context(), "set-option", "-t", "=s2:", "remain-on-exit", "on"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.run(t.Context(), "new-window", "-d", "-t", "=s2:", "-n", "late", "sh", "-c", "sleep 0.3; exit 4"); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, "late window to disappear", func() bool {
-		out, _ := c.run(t.Context(), "list-windows", "-t", "=s2:", "-F", "#{window_name}")
-		return !strings.Contains(out, "late")
-	})
-}
-
 // The pane's process leads its own process group, so signalling the
 // negative pane pid reaches the command's children too.
 func TestPanePidLeadsProcessGroup(t *testing.T) {
 	c := newTestClient(t)
-	startWindow(t, c, "s3", "svc", true, "sh", "-c", "sleep 300 & wait")
+	userSession(t, c, "s3")
+	startWindow(t, c, "s3", "svc", "sh", "-c", "sleep 300 & wait")
 
 	w, _ := findWindow(t, c, "s3", "svc")
 	pgid, err := syscall.Getpgid(w.PanePID)
@@ -161,25 +146,6 @@ func TestPanePidLeadsProcessGroup(t *testing.T) {
 	})
 }
 
-// respawn-pane -k restarts a command in the same window.
-func TestRespawnKeepsWindow(t *testing.T) {
-	c := newTestClient(t)
-	id := startWindow(t, c, "s4", "svc", true, "sh", "-c", "sleep 300")
-	before, _ := findWindow(t, c, "s4", "svc")
-
-	err := c.RespawnWindow(t.Context(), app.WindowSpec{Session: "s4", Service: "svc", Window: id, Command: []string{"sh", "-c", "sleep 301"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	after, ok := findWindow(t, c, "s4", "svc")
-	if !ok || after.ID != before.ID {
-		t.Fatalf("window changed: before %+v after %+v", before, after)
-	}
-	if after.PanePID == before.PanePID || after.Dead {
-		t.Fatalf("pane not respawned: before %+v after %+v", before, after)
-	}
-}
-
 // Windows returns only the stack's own windows, by service, even beside a
 // user window of the same name and another stack's windows.
 func TestWindowsFindsStackByTag(t *testing.T) {
@@ -188,7 +154,7 @@ func TestWindowsFindsStackByTag(t *testing.T) {
 	if _, err := c.run(t.Context(), "new-window", "-d", "-t", "=s5:", "-n", "web", "sleep", "300"); err != nil {
 		t.Fatal(err)
 	}
-	id := startWindow(t, c, "s5", "web", false, "sleep", "300")
+	id := startWindow(t, c, "s5", "web", "sleep", "300")
 	if _, err := c.StartWindow(t.Context(), app.WindowSpec{Session: "s5", Stack: "proj--other", Service: "web", Command: []string{"sleep", "300"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -202,32 +168,30 @@ func TestWindowsFindsStackByTag(t *testing.T) {
 	}
 }
 
-// A target written =name matches exactly, while a bare name matches by
+// A session is matched by exact name, where tmux alone would match a
 // prefix.
 func TestExactSessionTarget(t *testing.T) {
 	c := newTestClient(t)
-	userSession(t, c, "svx-shop-amber")
+	userSession(t, c, "work-2")
+	startWindow(t, c, "work-2", "svc", "sleep", "300")
 
-	if _, err := c.run(t.Context(), "has-session", "-t", "svx-shop"); err != nil {
+	if _, err := c.run(t.Context(), "has-session", "-t", "work"); err != nil {
 		t.Fatalf("bare prefix should match: %v", err)
 	}
-	ok, err := c.HasSession(t.Context(), "svx-shop")
-	if err != nil {
-		t.Fatal(err)
+	if ws, err := c.Windows(t.Context(), "work", testStack); err != nil || len(ws) != 0 {
+		t.Fatalf("Windows(work) = %v, %v; want none from work-2", ws, err)
 	}
-	if ok {
-		t.Fatal("=svx-shop matched svx-shop-amber")
-	}
-	if ok, _ := c.HasSession(t.Context(), "svx-shop-amber"); !ok {
-		t.Fatal("exact name did not match")
+	if _, err := c.StartWindow(t.Context(), app.WindowSpec{Session: "work", Stack: testStack, Service: "svc", Command: []string{"sleep", "300"}}); err == nil {
+		t.Fatal("StartWindow(work) created a window in work-2")
 	}
 }
 
 func TestPipePaneLogsAndEnv(t *testing.T) {
 	c := newTestClient(t)
+	userSession(t, c, "s6")
 	log := filepath.Join(t.TempDir(), "out.log")
 	id, err := c.StartWindow(t.Context(), app.WindowSpec{
-		Session: "s6", Stack: testStack, Service: "svc", CreateSession: true, Dir: t.TempDir(),
+		Session: "s6", Stack: testStack, Service: "svc", Dir: t.TempDir(),
 		Command: gated(c, `echo "hello $SVX_TEST_VAR"; sleep 30`),
 		Env:     map[string]string{"SVX_TEST_VAR": "world"},
 		LogFile: log,
@@ -251,10 +215,6 @@ func TestPipePaneLogsAndEnv(t *testing.T) {
 
 func TestMissingSessionIsAbsence(t *testing.T) {
 	c := newTestClient(t)
-	ok, err := c.HasSession(t.Context(), "nope")
-	if err != nil || ok {
-		t.Fatalf("HasSession = %v, %v", ok, err)
-	}
 	ws, err := c.Windows(t.Context(), "nope", testStack)
 	if err != nil || len(ws) != 0 {
 		t.Fatalf("Windows = %v, %v", ws, err)
@@ -264,12 +224,13 @@ func TestMissingSessionIsAbsence(t *testing.T) {
 	}
 }
 
-// A respawned pane keeps logging to the same file.
-func TestRespawnKeepsLogging(t *testing.T) {
+// A respawned pane keeps its window and keeps logging to the same file.
+func TestRespawnKeepsWindowAndLogging(t *testing.T) {
 	c := newTestClient(t)
+	userSession(t, c, "s7")
 	log := filepath.Join(t.TempDir(), "out.log")
 	spec := app.WindowSpec{
-		Session: "s7", Stack: testStack, Service: "svc", CreateSession: true, LogFile: log,
+		Session: "s7", Stack: testStack, Service: "svc", LogFile: log,
 		Command: gated(c, "echo run1; sleep 30"),
 	}
 	id, err := c.StartWindow(t.Context(), spec)
@@ -280,6 +241,7 @@ func TestRespawnKeepsLogging(t *testing.T) {
 		data, _ := os.ReadFile(log) //nolint:gosec // test temp file
 		return strings.Contains(string(data), "run1")
 	})
+	before, _ := findWindow(t, c, "s7", "svc")
 
 	spec.Window = id
 	spec.Command = gated(c, "echo run2; sleep 30")
@@ -290,6 +252,10 @@ func TestRespawnKeepsLogging(t *testing.T) {
 		data, _ := os.ReadFile(log) //nolint:gosec // test temp file
 		return strings.Contains(string(data), "run2")
 	})
+	after, ok := findWindow(t, c, "s7", "svc")
+	if !ok || after.ID != before.ID || after.PanePID == before.PanePID {
+		t.Fatalf("pane not respawned in place: before %+v after %+v", before, after)
+	}
 }
 
 // Run from a pane on the same server, svx adds its windows to that pane's

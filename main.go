@@ -231,8 +231,6 @@ func wire(deps *commands.Deps, cfg config.Config) error {
 
 	mux := tmux.FromEnv()
 	deps.Config = cfg
-	deps.Mux = mux
-	deps.Executable = exe
 	deps.App = &app.App{
 		Projects:   yamlproject.Repository{},
 		Store:      store,

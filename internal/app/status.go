@@ -104,3 +104,26 @@ func (a *App) view(ctx context.Context, stack domain.Stack) (StackView, error) {
 	}
 	return view, nil
 }
+
+// StaleStacks marks down every record whose session is gone and returns
+// them.
+func (a *App) StaleStacks(ctx context.Context) ([]domain.Identity, error) {
+	records, err := a.Store.List()
+	if err != nil {
+		return nil, err
+	}
+	var stale []domain.Identity
+	for i := range records {
+		if records[i].Status != domain.StackUp {
+			continue
+		}
+		alive, err := a.stackAlive(ctx, &records[i])
+		if err != nil {
+			return nil, err
+		}
+		if !alive {
+			stale = append(stale, records[i].ID)
+		}
+	}
+	return stale, nil
+}

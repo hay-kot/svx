@@ -28,10 +28,6 @@ func NewIdentity(project, stack string) (Identity, error) {
 // Key is the file-safe key used for state records: <project>--<stack>.
 func (id Identity) Key() string { return id.Project + "--" + id.Stack }
 
-// Session is the name of the stack's own tmux session, used when svx up
-// runs outside tmux: svx-<project>-<stack>.
-func (id Identity) Session() string { return "svx-" + id.Project + "-" + id.Stack }
-
 func (id Identity) String() string { return id.Project + "/" + id.Stack }
 
 // ParseKey reverses Key.

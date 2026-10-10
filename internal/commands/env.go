@@ -119,16 +119,6 @@ func (cmd *ExecCmd) run(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", args[0], err)
 	}
-	env := domain.ProcessEnv(environMap(), overlay, nil)
+	env := domain.ProcessEnv(cmd.deps.App.Environ(), overlay, nil)
 	return syscall.Exec(path, args, env) //nolint:gosec // running the user's command is the point
-}
-
-func environMap() map[string]string {
-	env := map[string]string{}
-	for _, kv := range os.Environ() {
-		if k, v, ok := strings.Cut(kv, "="); ok {
-			env[k] = v
-		}
-	}
-	return env
 }

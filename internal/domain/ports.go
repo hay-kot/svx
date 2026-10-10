@@ -52,15 +52,6 @@ func (t PortTable) All() []PortAssignment {
 	return out
 }
 
-// Clone deep-copies the table.
-func (t PortTable) Clone() PortTable {
-	out := make(PortTable, len(t))
-	for svc, ports := range t {
-		out[svc] = maps.Clone(ports)
-	}
-	return out
-}
-
 // PortAssignment is one resolved port.
 type PortAssignment struct {
 	Ref  PortRef
@@ -107,10 +98,10 @@ func SlotPorts(def Definition, slot int) (PortTable, []PortRef, error) {
 	return table, autos, nil
 }
 
-// StrideOverlaps finds pairs of fixed bases whose difference is a multiple of
-// the stride, which collide across slots: with stride 10, slot 1 of base 3000
-// is slot 0 of base 3010. Allocation still catches the collision, so these
-// are warnings.
+// StrideOverlaps finds pairs of fixed bases that collide across slots: with
+// stride 10, slot 1 of base 3000 is slot 0 of base 3010. Bases further apart
+// than the slot range can reach never meet. Allocation still catches the
+// collision, so these are warnings.
 func StrideOverlaps(def Definition) []string {
 	var fixed []DeclaredPort
 	for _, d := range DeclaredPorts(def) {
@@ -123,8 +114,8 @@ func StrideOverlaps(def Definition) []string {
 	for i := range fixed {
 		for j := i + 1; j < len(fixed); j++ {
 			a, b := fixed[i], fixed[j]
-			diff := a.Spec.Base - b.Spec.Base
-			if diff != 0 && diff%stride == 0 {
+			diff := abs(a.Spec.Base - b.Spec.Base)
+			if diff != 0 && diff%stride == 0 && diff/stride < def.Settings.MaxSlots {
 				warnings = append(warnings, fmt.Sprintf(
 					"ports %s (%d) and %s (%d) differ by a multiple of port_stride %d, so they collide across slots",
 					a.Ref, a.Spec.Base, b.Ref, b.Spec.Base, stride))
@@ -132,4 +123,11 @@ func StrideOverlaps(def Definition) []string {
 		}
 	}
 	return warnings
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
 }

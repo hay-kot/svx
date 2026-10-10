@@ -86,9 +86,9 @@ func describeCycle(services []ServiceDef, placed map[string]bool) string {
 	}
 }
 
-// Closure returns the named services plus everything they depend on,
+// closure returns the named services plus everything they depend on,
 // transitively.
-func Closure(services []ServiceDef, names []string) (map[string]bool, error) {
+func closure(services []ServiceDef, names []string) (map[string]bool, error) {
 	byName := make(map[string]ServiceDef, len(services))
 	for _, s := range services {
 		byName[s.Name] = s
@@ -122,7 +122,7 @@ func Targets(services []ServiceDef, requested []string) (map[string]bool, error)
 			}
 		}
 	}
-	return Closure(services, requested)
+	return closure(services, requested)
 }
 
 func serviceNames(services []ServiceDef) []string {

@@ -28,12 +28,10 @@ extern void svxMainCallback(uintptr_t id);
 
 static NSStatusItem *statusItem;
 static NSMenu *menu;
-// menuStack is the chain of menus being filled, the root first; new items go to
-// the last. svx nests three deep: stack, service, actions.
-enum { maxDepth = 8 };
-static NSMenu *menuStack[maxDepth];
-static int depth;
-#define current (menuStack[depth])
+// current is the menu new items go to: the root, or a stack's actions
+// submenu between svxMenuBeginSubmenu and svxMenuEndSubmenu. svx nests one
+// level deep. It is not retained; the root or its parent item owns it.
+static NSMenu *current;
 static SvxMenuTarget *target;
 
 // stringWithUTF8String: returns nil on invalid UTF-8, and AppKit throws on
@@ -55,8 +53,7 @@ void svxInit(void) {
 	menu = [[NSMenu alloc] initWithTitle:@"svx"];
 	menu.autoenablesItems = NO;
 	menu.delegate = target;
-	menuStack[0] = menu;
-	depth = 0;
+	current = menu;
 	statusItem.menu = menu;
 }
 
@@ -99,7 +96,7 @@ void svxSetStatus(int running) {
 
 void svxMenuClear(void) {
 	[menu removeAllItems];
-	depth = 0;
+	current = menu;
 }
 
 void svxMenuAddHeader(const char *title) {
@@ -238,17 +235,13 @@ void svxMenuBeginSubmenu(const char *title, const char *detail, int tone, bool b
 	sub.autoenablesItems = NO;
 	item.submenu = sub;
 	[current addItem:item];
-	if (depth < maxDepth - 1) {
-		menuStack[++depth] = sub;
-	}
+	current = sub;
 	[sub release];
 	[item release];
 }
 
 void svxMenuEndSubmenu(void) {
-	if (depth > 0) {
-		depth--;
-	}
+	current = menu;
 }
 
 void svxMenuAddQuit(void) {
