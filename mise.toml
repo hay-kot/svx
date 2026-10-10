@@ -1,0 +1,48 @@
+[tools]
+go = "1.27.1"
+golangci-lint = "2.14.0"
+goreleaser = "2.18.2"
+
+[env]
+LOG_LEVEL = "debug"
+
+[tasks.run]
+description = "Run the main application"
+run = "go run ."
+
+[tasks.build]
+description = "Build the binary with goreleaser"
+run = "goreleaser build --snapshot --clean"
+
+[tasks.test]
+description = "Run all go tests"
+run = "go test ./..."
+
+[tasks.coverage]
+description = "Run tests with race detection and coverage"
+run = "go test -race -coverprofile=coverage.out -covermode=atomic ./... -v -cover"
+
+[tasks.tidy]
+description = "Run go mod tidy"
+run = "go mod tidy"
+
+[tasks.lint]
+description = "Run golangci-lint"
+run = "golangci-lint run ./..."
+
+[tasks.fmt]
+description = "Run golangci-lint fmt"
+run = "golangci-lint fmt"
+
+[tasks.check]
+description = "Run all checks for PRs (tidy, lint, test)"
+run = [
+    { task = "tidy" },
+    { task = "lint" },
+    { task = "test" },
+]
+
+[tasks.integration]
+description = "Run Docker-based integration tests against the built binary"
+depends = ["build"]
+run = "docker build -f Dockerfile.test -t svx-integration-test . && docker run --rm svx-integration-test"
