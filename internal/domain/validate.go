@@ -58,7 +58,7 @@ func Validate(def Definition) ([]string, error) {
 
 	seen := declared{labels: map[string]string{}, bases: map[int]string{}}
 	for _, s := range def.Services {
-		validateService(def, s, &seen, fail)
+		validateService(s, &seen, fail)
 	}
 
 	if _, err := Levels(def.Services); err != nil {
@@ -78,7 +78,7 @@ type declared struct {
 	bases  map[int]string
 }
 
-func validateService(def Definition, s ServiceDef, seen *declared, fail func(key, format string, args ...any)) {
+func validateService(s ServiceDef, seen *declared, fail func(key, format string, args ...any)) {
 	key := "services." + s.Name
 	if !nameRe.MatchString(s.Name) {
 		fail(key, "service names may only use a-z, 0-9 and -, and must start with a letter or digit")
@@ -133,7 +133,7 @@ func validateService(def Definition, s ServiceDef, seen *declared, fail func(key
 		checkTemplate(fail, lkey, l.Target)
 	}
 
-	validateReady(def, s, fail)
+	validateReady(s, fail)
 
 	if _, err := ParseSignal(s.Stop.Signal); err != nil {
 		fail(key+".stop_signal", "%v", err)
@@ -143,7 +143,7 @@ func validateService(def Definition, s ServiceDef, seen *declared, fail func(key
 	}
 }
 
-func validateReady(def Definition, s ServiceDef, fail func(key, format string, args ...any)) {
+func validateReady(s ServiceDef, fail func(key, format string, args ...any)) {
 	key := "services." + s.Name
 	switch s.Ready.Kind {
 	case ReadyDefault:
@@ -152,9 +152,7 @@ func validateReady(def Definition, s ServiceDef, fail func(key, format string, a
 			fail(key+".ready.http", "a relative path needs a `port` on the service")
 		}
 	case ReadyOutput:
-		if !def.Settings.Logs {
-			fail(key+".ready.output", "needs settings.logs to be on, since it reads the service log")
-		} else if _, err := regexp.Compile(s.Ready.Value); err != nil && !strings.Contains(s.Ready.Value, "{{") {
+		if _, err := regexp.Compile(s.Ready.Value); err != nil && !strings.Contains(s.Ready.Value, "{{") {
 			fail(key+".ready.output", "invalid regex: %v", err)
 		}
 	case ReadyCmd, ReadyDelay:

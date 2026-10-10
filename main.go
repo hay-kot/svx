@@ -232,7 +232,7 @@ func wire(deps *commands.Deps, cfg config.Config) error {
 	mux := tmux.FromEnv()
 	deps.Config = cfg
 	deps.App = &app.App{
-		Projects:   yamlproject.Repository{},
+		Projects:   yamlproject.Repository{Projects: cfg.Projects},
 		Store:      store,
 		Mux:        mux,
 		Signals:    system.Signals{},

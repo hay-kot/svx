@@ -34,7 +34,7 @@ func NewLogsCmd(flags *Flags, deps *Deps) *LogsCmd {
 func (cmd *LogsCmd) Register(app *cli.Command) *cli.Command {
 	app.Commands = append(app.Commands, &cli.Command{
 		Name:      "logs",
-		Usage:     "print a service's log",
+		Usage:     "print a service's log, or its window's scrollback when logs are off",
 		ArgsUsage: "<service>",
 		Flags: append(cmd.stack.flags(),
 			&cli.BoolFlag{Name: "follow", Aliases: []string{"f"}, Usage: "keep printing as the log grows", Destination: &cmd.follow},
@@ -51,10 +51,21 @@ func (cmd *LogsCmd) run(ctx context.Context, c *cli.Command) error {
 	if service == "" {
 		return errors.New("name a service: svx logs <service>")
 	}
-	path, err := cmd.deps.App.LogFile(ctx, cmd.stack.target(), service)
+	log, err := cmd.deps.App.ServiceLog(ctx, cmd.stack.target(), service)
 	if err != nil {
 		return err
 	}
+	if log.File == "" {
+		if cmd.follow {
+			return fmt.Errorf("-f needs a log file: set settings.logs: true, or use `svx attach %s`", service)
+		}
+		out := bufio.NewWriter(os.Stdout)
+		if err := cmd.writeTail(log.Scrollback, out); err != nil {
+			return err
+		}
+		return out.Flush()
+	}
+	path := log.File
 
 	f, err := os.Open(path) //nolint:gosec // path comes from the stack record
 	if err != nil {
@@ -98,7 +109,13 @@ func (cmd *LogsCmd) copyTail(f *os.File, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	text := string(data)
+	return cmd.writeTail(string(data), w)
+}
+
+func (cmd *LogsCmd) writeTail(text string, w io.Writer) error {
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
 	if cmd.lines > 0 {
 		lines := strings.SplitAfter(text, "\n")
 		if lines[len(lines)-1] == "" {
@@ -109,7 +126,7 @@ func (cmd *LogsCmd) copyTail(f *os.File, w io.Writer) error {
 		}
 		text = strings.Join(lines, "")
 	}
-	_, err = io.WriteString(w, cmd.clean(text))
+	_, err := io.WriteString(w, cmd.clean(text))
 	return err
 }
 

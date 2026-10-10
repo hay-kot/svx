@@ -9,12 +9,9 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
 	"regexp"
-	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/hay-kot/appkit/httpclient"
@@ -94,28 +91,13 @@ func cmdCheck(ctx context.Context, probe app.Probe) error {
 	return nil
 }
 
-// outputCheck matches the regex against what the service logged since it
-// started, so a match from a previous run does not count.
+// outputCheck matches the regex against what the current run printed.
 func outputCheck(probe app.Probe) error {
 	re, err := regexp.Compile(probe.Value)
 	if err != nil {
 		return fmt.Errorf("ready.output %q: %w", probe.Value, err)
 	}
-	f, err := os.Open(probe.LogFile)
-	if err != nil {
-		return fmt.Errorf("log not written yet: %w", err)
-	}
-	defer func() { _ = f.Close() }()
-	if _, err := f.Seek(probe.LogOffset, io.SeekStart); err != nil {
-		return err
-	}
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return err
-	}
-	lines := strings.Split(domain.StripANSI(string(data)), "\n")
-	lines = slices.DeleteFunc(lines, func(l string) bool { return strings.HasPrefix(l, domain.BannerPrefix) })
-	if re.MatchString(strings.Join(lines, "\n")) {
+	if re.MatchString(probe.Output) {
 		return nil
 	}
 	return fmt.Errorf("no output matching %q yet", probe.Value)

@@ -15,7 +15,7 @@ Needs tmux 3.2 or newer. `svx doctor` checks. The macOS menu bar needs a build w
 ## Quick start
 
 ```bash
-svx init        # writes svx.yaml and adds .svx/ to .gitignore
+svx init        # writes svx.yaml and adds .svx/ to .gitignore (--stealth: .git/info/exclude)
 svx up          # starts every autostart service in dependency order
 svx             # same as svx status
 svx attach web  # jump into a service's window
@@ -34,7 +34,9 @@ mise run demo:down
 
 ## Configuration
 
-`svx.yaml` lives at the repo root and is found by walking up from the current directory. `svx.local.yaml` beside it is merged on top for personal overrides (deep merge, keep it gitignored).
+`svx.yaml` lives at the repo root and is found by walking up from the current directory. `svx.local.yaml` beside it is merged on top for personal overrides (deep merge, keep it gitignored). A repo without an `svx.yaml` can use one kept elsewhere, such as your dotfiles, through `projects` in the [user config](#user-config).
+
+To use svx in a repo without committing anything, run `svx init --stealth`. It ignores `svx.yaml`, `svx.local.yaml` and `.svx/` in `.git/info/exclude`, which git never tracks, instead of `.gitignore`.
 
 ```yaml
 project: shop # optional, defaults to the main checkout's directory name
@@ -42,7 +44,7 @@ project: shop # optional, defaults to the main checkout's directory name
 settings:
   port_stride: 10 # each slot offsets every port by this much
   max_slots: 50
-  logs: true # pipe windows to .svx/<stack>/logs/<service>.log
+  logs: false # true also writes each window to .svx/<stack>/logs/<service>.log
   menubar: true # false hides this project's stacks from the menu bar
 
 vars:
@@ -123,7 +125,14 @@ menubar:
   enabled: true # false: `svx bar` exits at once, so the menu bar stays off
   terminal: Terminal # the app "Attach in Terminal" opens, e.g. iTerm
   # attach_uri: 'myterm://run?cmd={{ urlquery .command }}'
+projects: # svx.yaml files for repos that have none of their own
+  shop: ~/dotfiles/svx/shop.yaml # checkout directory name
+  ~/code/api: ~/dotfiles/svx/api.yaml # full path
+  'shop-*': svx/shop.yaml # glob, relative to this config file
+  '~/work/*/web': ~/dotfiles/svx/web.yaml # a glob with a / matches the full path
 ```
+
+`projects` applies only when no `svx.yaml` is found walking up. svx looks up the checkout root (the nearest directory with `.git`, else the current directory) in this order: full path, directory name, then globs, where the longest matching glob wins. The checkout root becomes the project root, so service `dir`s, `svx.local.yaml` and `.svx/` resolve against the repo as usual. Exclude `.svx/` in `.git/info/exclude` to keep it out of `git status`.
 
 `attach_uri` replaces `terminal` when set: "Attach in Terminal" renders it and hands the result to `open`, so any URI scheme or handler app works. The template sees `.project`, `.stack`, `.service` (empty for the whole stack), `.session`, `.command` (the quoted `svx attach` command line) and `.script` (an executable that runs `.command` with svx's environment, safer when the terminal starts a fresh shell). `urlquery` and `pathescape` encode values. `svx bar` checks the template when it starts.
 
@@ -137,13 +146,13 @@ menubar:
 | `svx ls`                   | Every stack on the machine. `--json`                                                                       |
 | `svx attach [service]`     | Attach, or switch client when already in tmux                                                              |
 | `svx restart <service...>` | Restart in place, keeping ports, in dependency order                                                       |
-| `svx logs <service>`       | Print a log. `-f`, `--raw`, `-n`                                                                           |
+| `svx logs <service>`       | Print a log, or the window's scrollback when logs are off. `-f` needs `logs: true`. `--raw`, `-n`          |
 | `svx env`                  | Print the stack's variables. `--format shell\|dotenv\|json`, `--service`                                   |
 | `svx exec -- <cmd>`        | Run a command with the stack's environment                                                                 |
 | `svx open [link]`          | Open a link, or list them                                                                                  |
 | `svx config`               | Print the rendered config                                                                                  |
 | `svx bar`                  | Run the menu bar. `--install` starts it now and at login, `--uninstall` removes that                       |
-| `svx init`                 | Write a starter `svx.yaml`                                                                                 |
+| `svx init`                 | Write a starter `svx.yaml`. `--stealth` ignores svx's files in `.git/info/exclude`, `svx.yaml` included    |
 | `svx doctor`               | Check tmux, state, stale stacks and the menu bar                                                           |
 
 Commands act on the current checkout's stack. `--name` (or `SVX_STACK`) picks another stack name, which is how one checkout runs two stacks. `--project` with `--name` targets a stack without reading any config.
@@ -192,7 +201,7 @@ The code follows ports and adapters:
 | `internal/adapters/yamlproject` | Finds, merges and maps `svx.yaml`                                                                                              |
 | `internal/adapters/statefs`     | State directory, flock, atomic writes                                                                                          |
 | `internal/adapters/tmux`        | The tmux binary                                                                                                                |
-| `internal/adapters/readiness`   | HTTP, TCP, command and log readiness probes                                                                                    |
+| `internal/adapters/readiness`   | HTTP, TCP, command and output readiness probes                                                                                 |
 | `internal/adapters/menubar`     | The macOS menu bar app and its launchd login item                                                                              |
 | `internal/adapters/system`      | Signals, port probes, files, browser, secrets                                                                                  |
 | `internal/commands`             | CLI wiring and output only                                                                                                     |
@@ -219,4 +228,5 @@ Tests never touch your tmux server or state: they use `tmux -L svx-test-<random>
 - A oneshot that already exited 0 counts as done on a repeat `up` and is not rerun. Use `svx restart <name>` to rerun it.
 - `svx restart` re-renders the config against the recorded slot, so config edits apply without moving ports.
 - `svx logs` takes `-n` to limit output to the last lines.
+- `settings.logs` defaults to false. `ready.output` reads the window's tmux history instead of the log file, so it works either way.
 - The public record adds `dir`, `menubar`, `service_order` and per-service `oneshot` fields. `session` is the session `up` ran from.

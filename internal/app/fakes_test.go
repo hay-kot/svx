@@ -376,12 +376,11 @@ type fakeFiles struct{}
 
 func (fakeFiles) MkdirAll(string) error  { return nil }
 func (fakeFiles) RemoveAll(string) error { return nil }
-func (fakeFiles) Size(string) int64      { return 0 }
 
 type fakeProjects struct{ project Project }
 
-func (f *fakeProjects) Load(string) (Project, error)  { return f.project, nil }
-func (f *fakeProjects) Init(string) ([]string, error) { return nil, nil }
+func (f *fakeProjects) Load(string) (Project, error)               { return f.project, nil }
+func (f *fakeProjects) Init(string, InitOptions) ([]string, error) { return nil, nil }
 
 type fakes struct {
 	log      *eventLog

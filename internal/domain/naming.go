@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -116,3 +117,34 @@ func StripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
 // command. The banner quotes the command, so log readers that look for the
 // service's own output must skip it.
 const BannerPrefix = "svx: "
+
+// RunMarker goes in the banner and names the run's pid. A respawned pane
+// keeps the previous run's output, and the pid is what tells the runs apart.
+func RunMarker(pid int) string { return fmt.Sprintf("(pid %d)", pid) }
+
+// RunOutput returns what the run with pid printed, taken from a pane's
+// history, without colour codes or banners.
+func RunOutput(history string, pid int) string {
+	lines := strings.Split(StripANSI(history), "\n")
+	marker := RunMarker(pid)
+	start, sawBanner := -1, false
+	for i, l := range lines {
+		if !strings.HasPrefix(l, BannerPrefix) {
+			continue
+		}
+		sawBanner = true
+		if strings.Contains(l, marker) {
+			start = i + 1
+		}
+	}
+	switch {
+	case start >= 0:
+		lines = lines[start:]
+	case sawBanner:
+		// Only older runs' banners: this run has not printed its own yet.
+		return ""
+	}
+	// With no banner at all, tmux's history limit trimmed this run's banner
+	// and everything older, so what is left belongs to this run.
+	return strings.Join(slices.DeleteFunc(lines, func(l string) bool { return strings.HasPrefix(l, BannerPrefix) }), "\n")
+}

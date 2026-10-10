@@ -271,6 +271,6 @@ func (a *App) slotPorts(def domain.Definition, slot int, prev domain.PortTable) 
 }
 
 // Init writes a starter config.
-func (a *App) Init(dir string) ([]string, error) {
-	return a.Projects.Init(dir)
+func (a *App) Init(dir string, opts InitOptions) ([]string, error) {
+	return a.Projects.Init(dir, opts)
 }

@@ -132,22 +132,40 @@ func (a *App) Attach(ctx context.Context, t Target, service string) error {
 	return a.Mux.Attach(ctx, stack.Session, window)
 }
 
-// LogFile returns a service's log path, failing when logs are off.
-func (a *App) LogFile(_ context.Context, t Target, service string) (string, error) {
+// ServiceLog says where to read a service's output: File when logs are on,
+// else Scrollback, the window's tmux history.
+type ServiceLog struct {
+	File       string
+	Scrollback string
+}
+
+// ServiceLog finds a service's output.
+func (a *App) ServiceLog(ctx context.Context, t Target, service string) (ServiceLog, error) {
 	r, err := a.resolve(t, false)
 	if err != nil {
-		return "", err
+		return ServiceLog{}, err
 	}
 	stack, err := a.loadStack(r.id)
 	if err != nil {
-		return "", err
+		return ServiceLog{}, err
 	}
 	svc, ok := stack.Service(service)
 	if !ok {
-		return "", usage(fmt.Errorf("unknown service %q, known services: %s", service, strings.Join(stack.ServiceNames(), ", ")))
+		return ServiceLog{}, usage(fmt.Errorf("unknown service %q, known services: %s", service, strings.Join(stack.ServiceNames(), ", ")))
 	}
-	if svc.LogFile == "" {
-		return "", usage(fmt.Errorf("logs are off for this project, set settings.logs: true or use `svx attach %s`", service))
+	if svc.LogFile != "" {
+		return ServiceLog{File: svc.LogFile, Scrollback: ""}, nil
 	}
-	return svc.LogFile, nil
+	w, found, err := a.window(ctx, stack, svc.Name)
+	if err != nil {
+		return ServiceLog{}, err
+	}
+	if !found {
+		return ServiceLog{}, usage(fmt.Errorf("%s has no window, and logs are off so there is no log file; set settings.logs: true to keep one", service))
+	}
+	history, err := a.Mux.Capture(ctx, w.ID, 0)
+	if err != nil {
+		return ServiceLog{}, err
+	}
+	return ServiceLog{File: "", Scrollback: history}, nil
 }

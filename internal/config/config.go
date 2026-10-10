@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 
@@ -16,6 +17,12 @@ type Config struct {
 	LogLevel string        `yaml:"log_level"`
 	LogFile  string        `yaml:"log_file"`
 	MenuBar  MenuBarConfig `yaml:"menubar"`
+	// Projects maps a checkout to an svx.yaml kept outside the repo, for
+	// checkouts without their own. A key is a full path, a directory name,
+	// or a glob; see yamlproject.Repository for the match order. Values
+	// may start with ~/ and relative values resolve against the directory
+	// holding the config file.
+	Projects map[string]string `yaml:"projects"`
 }
 
 // MenuBarConfig controls the macOS menu bar app.
@@ -36,6 +43,7 @@ func Default() Config {
 		LogLevel: "info",
 		LogFile:  "",
 		MenuBar:  MenuBarConfig{Enabled: true, Terminal: "Terminal", AttachURI: ""},
+		Projects: nil,
 	}
 }
 
@@ -69,5 +77,29 @@ func ReadFrom(path string) (Config, error) {
 		return cfg, fmt.Errorf("parsing config: %w", err)
 	}
 
+	home, _ := os.UserHomeDir()
+	projects := make(map[string]string, len(cfg.Projects))
+	for key, file := range cfg.Projects {
+		file = expandHome(file, home)
+		if !filepath.IsAbs(file) {
+			file = filepath.Join(filepath.Dir(path), file)
+		}
+		projects[expandHome(key, home)] = file
+	}
+	cfg.Projects = projects
+
 	return cfg, nil
+}
+
+func expandHome(p, home string) string {
+	if home == "" {
+		return p
+	}
+	if p == "~" {
+		return home
+	}
+	if rest, ok := strings.CutPrefix(p, "~/"); ok {
+		return filepath.Join(home, rest)
+	}
+	return p
 }

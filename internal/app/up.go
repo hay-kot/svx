@@ -256,11 +256,6 @@ func (a *App) launch(
 ) Outcome {
 	a.emit(Event{Kind: EventStarting, Service: svc.Name, Detail: "", Elapsed: 0})
 
-	var offset int64
-	if svc.LogFile != "" {
-		offset = a.Files.Size(svc.LogFile)
-	}
-
 	spec := a.windowSpec(stack, svc)
 	var err error
 	if window != "" {
@@ -277,7 +272,7 @@ func (a *App) launch(
 	if noWait {
 		return Outcome{State: OutcomeStarted, Detail: "", Elapsed: 0}
 	}
-	return a.waitReady(ctx, stack, svc, offset)
+	return a.waitReady(ctx, stack, svc)
 }
 
 func (a *App) windowSpec(stack domain.Stack, svc domain.Service) WindowSpec {
@@ -298,14 +293,14 @@ func (a *App) windowSpec(stack domain.Stack, svc domain.Service) WindowSpec {
 // waitReady polls a service until its readiness check passes, it dies, or the
 // timeout runs out. The window's own state is checked every round, so a crash
 // fails fast instead of waiting out the timeout.
-func (a *App) waitReady(ctx context.Context, stack domain.Stack, svc domain.Service, logOffset int64) Outcome {
+func (a *App) waitReady(ctx context.Context, stack domain.Stack, svc domain.Service) Outcome {
 	start := a.Now()
 	timeout := svc.Ready.Timeout
 	if timeout <= 0 {
 		timeout = domain.DefaultReadyTimeout
 	}
 
-	probe, needsProbe := a.probeFor(stack, svc, logOffset)
+	probe, needsProbe := a.probeFor(stack, svc)
 
 	ticker := time.NewTicker(a.poll())
 	defer ticker.Stop()
@@ -338,6 +333,14 @@ func (a *App) waitReady(ctx context.Context, stack domain.Stack, svc domain.Serv
 				return a.ready(svc, "", elapsed)
 			}
 		default:
+			if svc.Ready.Kind == domain.ReadyOutput {
+				history, err := a.Mux.Capture(ctx, w.ID, 0)
+				if err != nil {
+					lastErr = err
+					break
+				}
+				probe.Output = domain.RunOutput(history, w.PanePID)
+			}
 			if lastErr = a.Ready.Probe(ctx, probe); lastErr == nil {
 				return a.ready(svc, "", elapsed)
 			}
@@ -359,15 +362,14 @@ func (a *App) waitReady(ctx context.Context, stack domain.Stack, svc domain.Serv
 	}
 }
 
-func (a *App) probeFor(stack domain.Stack, svc domain.Service, logOffset int64) (Probe, bool) {
+func (a *App) probeFor(stack domain.Stack, svc domain.Service) (Probe, bool) {
 	p := Probe{
-		Kind:      svc.Ready.Kind,
-		Value:     svc.Ready.Value,
-		Dir:       svc.Dir,
-		Env:       domain.ProcessEnv(stack.Snapshot, svc.Env, nil),
-		Port:      0,
-		LogFile:   svc.LogFile,
-		LogOffset: logOffset,
+		Kind:   svc.Ready.Kind,
+		Value:  svc.Ready.Value,
+		Dir:    svc.Dir,
+		Env:    domain.ProcessEnv(stack.Snapshot, svc.Env, nil),
+		Port:   0,
+		Output: "",
 	}
 	switch svc.Ready.Kind {
 	case domain.ReadyHTTP, domain.ReadyCmd, domain.ReadyOutput:

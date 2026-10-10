@@ -5,6 +5,7 @@ package integration
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -186,41 +187,56 @@ services:
 }
 
 func TestReadyOutputLogsAndRestart(t *testing.T) {
-	h := NewHarness(t)
-	dir := t.TempDir()
-	config := `
+	for _, logs := range []bool{false, true} {
+		t.Run(fmt.Sprintf("logs=%t", logs), func(t *testing.T) {
+			h := NewHarness(t)
+			dir := t.TempDir()
+			config := fmt.Sprintf(`
 project: logs
+settings:
+  logs: %t
 services:
   app:
-    run: 'echo "booting"; sleep 0.5; printf "\033[32mserver ready\033[0m on %s\n" "$PORT"; sleep 300'
+    run: 'echo "booting"; sleep 0.5; printf "\033[32mserver ready\033[0m on %%s\n" "$PORT"; sleep 300'
     port: 29000
     ready: { output: 'server ready on \d+', timeout: 10s }
-`
-	if err := os.WriteFile(filepath.Join(dir, "svx.yaml"), []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if out, err := h.Run(dir, "up"); err != nil {
-		t.Fatalf("up: %v\n%s", err, out)
-	}
-	port := status(t, h, dir).port("app")
+`, logs)
+			if err := os.WriteFile(filepath.Join(dir, "svx.yaml"), []byte(config), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if out, err := h.Run(dir, "up"); err != nil {
+				t.Fatalf("up: %v\n%s", err, out)
+			}
+			port := status(t, h, dir).port("app")
+			if found, _ := filepath.Glob(filepath.Join(dir, ".svx", "*", "logs", "app.log")); (len(found) > 0) != logs {
+				t.Errorf("log files = %v, want any = %t", found, logs)
+			}
 
-	logs, err := h.Stdout(dir, "logs", "app")
-	if err != nil {
-		t.Fatalf("logs: %v", err)
-	}
-	if !strings.Contains(logs, "booting") || !strings.Contains(logs, "server ready on") || strings.Contains(logs, "\x1b[") {
-		t.Fatalf("logs:\n%q", logs)
-	}
+			out, err := h.Stdout(dir, "logs", "app")
+			if err != nil {
+				t.Fatalf("logs: %v", err)
+			}
+			if !strings.Contains(out, "booting") || !strings.Contains(out, "server ready on") || strings.Contains(out, "\x1b[") {
+				t.Fatalf("logs:\n%q", out)
+			}
 
-	if out, err := h.Run(dir, "restart", "app"); err != nil {
-		t.Fatalf("restart: %v\n%s", err, out)
-	}
-	if after := status(t, h, dir).port("app"); after != port {
-		t.Fatalf("restart moved the port: %d -> %d", port, after)
-	}
-	logs, _ = h.Stdout(dir, "logs", "app")
-	if strings.Count(logs, "server ready on 29000") != 2 {
-		t.Fatalf("expected two runs in the log:\n%s", logs)
+			if out, err := h.Run(dir, "restart", "app"); err != nil {
+				t.Fatalf("restart: %v\n%s", err, out)
+			}
+			if after := status(t, h, dir).port("app"); after != port {
+				t.Fatalf("restart moved the port: %d -> %d", port, after)
+			}
+			// respawn-pane clears the visible screen, so only the log file
+			// keeps the earlier run.
+			want := 1
+			if logs {
+				want = 2
+			}
+			out, _ = h.Stdout(dir, "logs", "app")
+			if got := strings.Count(out, "server ready on 29000"); got != want {
+				t.Fatalf("expected %d runs in the log, got %d:\n%s", want, got, out)
+			}
+		})
 	}
 }
 

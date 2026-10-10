@@ -3,6 +3,7 @@ package yamlproject
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -73,7 +74,7 @@ func TestLoadWalksUpAndKeepsOrder(t *testing.T) {
 	if got := strings.Join(def.ServiceNames(), ","); got != "web,redis,api,worker" {
 		t.Fatalf("order = %s", got)
 	}
-	if def.Project != "shop" || def.Settings.PortStride != 20 || def.Settings.MaxSlots != domain.DefaultMaxSlots || !def.Settings.Logs {
+	if def.Project != "shop" || def.Settings.PortStride != 20 || def.Settings.MaxSlots != domain.DefaultMaxSlots || def.Settings.Logs {
 		t.Fatalf("settings = %+v", def.Settings)
 	}
 
@@ -193,7 +194,7 @@ func TestCheckoutNameFollowsWorktrees(t *testing.T) {
 func TestInit(t *testing.T) {
 	dir := t.TempDir()
 	write(t, filepath.Join(dir, ".gitignore"), "node_modules")
-	changed, err := Repository{}.Init(dir)
+	changed, err := Repository{}.Init(dir, app.InitOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +214,139 @@ func TestInit(t *testing.T) {
 		t.Fatalf("starter config does not validate: %v", err)
 	}
 
-	if _, err := (Repository{}).Init(dir); err == nil {
+	if _, err := (Repository{}).Init(dir, app.InitOptions{}); err == nil {
 		t.Fatal("second init should refuse to overwrite")
 	}
+}
+
+func TestInitStealth(t *testing.T) {
+	dir := t.TempDir()
+	if out, err := exec.CommandContext(t.Context(), "git", "init", "-q", dir).CombinedOutput(); err != nil { //nolint:gosec // a test temp dir
+		t.Skipf("git init: %v: %s", err, out)
+	}
+	sub := filepath.Join(dir, "app")
+	if err := os.MkdirAll(sub, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := Repository{}.Init(sub, app.InitOptions{Stealth: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exclude := filepath.Join(dir, ".git", "info", "exclude")
+	if len(changed) != 2 || !sameFile(changed[1], exclude) {
+		t.Fatalf("changed = %v", changed)
+	}
+	data, _ := os.ReadFile(exclude) //nolint:gosec // test temp file
+	for _, want := range []string{"svx.yaml\n", ".svx/\n", "svx.local.yaml\n"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("exclude missing %q:\n%s", want, data)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(sub, ".gitignore")); !os.IsNotExist(err) {
+		t.Errorf("stealth init should not touch .gitignore, stat err = %v", err)
+	}
+
+	out, err := exec.CommandContext(t.Context(), "git", "-C", dir, "status", "--porcelain", "--untracked-files=all").Output() //nolint:gosec // a test temp dir
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 0 {
+		t.Errorf("git status should be clean:\n%s", out)
+	}
+}
+
+func TestInitStealthOutsideGit(t *testing.T) {
+	dir := t.TempDir()
+	_, err := Repository{}.Init(dir, app.InitOptions{Stealth: true})
+	if app.ExitCode(err) != app.ExitUsage {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "svx.yaml")); !os.IsNotExist(err) {
+		t.Errorf("failed stealth init should not leave svx.yaml, stat err = %v", err)
+	}
+}
+
+func TestLoadFromProjectsConfig(t *testing.T) {
+	dotfiles := t.TempDir()
+	shop := filepath.Join(dotfiles, "shop.yaml")
+	write(t, shop, shopYAML)
+	catchAll := filepath.Join(dotfiles, "any.yaml")
+	write(t, catchAll, "services:\n  web:\n    run: x\n")
+
+	base := t.TempDir()
+	checkout := filepath.Join(base, "shop-feature")
+	sub := filepath.Join(checkout, "web", "src")
+	if err := os.MkdirAll(filepath.Join(checkout, ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(sub, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(checkout, "svx.local.yaml"), "settings:\n  port_stride: 5\n")
+
+	repo := Repository{Projects: map[string]string{"shop-*": shop, "*": catchAll}}
+	proj, err := repo.Load(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proj.Root != checkout {
+		t.Errorf("root = %q, want %q", proj.Root, checkout)
+	}
+	if proj.Def.Project != "shop" || proj.Def.Settings.PortStride != 5 {
+		t.Errorf("def = %+v", proj.Def)
+	}
+
+	write(t, filepath.Join(checkout, "svx.yaml"), "project: inrepo\nservices:\n  web:\n    run: x\n")
+	proj, err = repo.Load(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proj.Def.Project != "inrepo" {
+		t.Errorf("an svx.yaml in the repo should win, got project %q", proj.Def.Project)
+	}
+}
+
+func TestLoadFromProjectsConfigMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	repo := Repository{Projects: map[string]string{filepath.Base(dir): filepath.Join(dir, "nope.yaml")}}
+	if _, err := repo.Load(dir); err == nil || !strings.Contains(err.Error(), "nope.yaml") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestMatchProject(t *testing.T) {
+	projects := map[string]string{
+		"/code/exact": "full",
+		"exact":       "base",
+		"shop-*":      "glob",
+		"shop-api-*":  "longer",
+		"/work/*/svc": "pathglob",
+		"*":           "all",
+	}
+	tests := map[string]string{
+		"/code/exact":     "full",
+		"/other/exact":    "base",
+		"/x/shop-web":     "glob",
+		"/x/shop-api-v2":  "longer",
+		"/work/team/svc":  "pathglob",
+		"/somewhere/else": "all",
+	}
+	for dir, want := range tests {
+		if got := matchProject(projects, dir); got != want {
+			t.Errorf("matchProject(%q) = %q, want %q", dir, got, want)
+		}
+	}
+	if got := matchProject(map[string]string{"shop-*": "x"}, "/x/web"); got != "" {
+		t.Errorf("no match should be empty, got %q", got)
+	}
+}
+
+func sameFile(a, b string) bool {
+	ai, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	bi, err := os.Stat(b)
+	return err == nil && os.SameFile(ai, bi)
 }
