@@ -1,5 +1,7 @@
 # Contributing
 
+The pull request template describes the title format and the scope list.
+
 ## Writing style
 
 This guidance applies to all contributor prose. It includes pull request
