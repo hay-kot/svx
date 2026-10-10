@@ -122,7 +122,10 @@ log_level: info
 menubar:
   enabled: true # false: `svx bar` exits at once, so the menu bar stays off
   terminal: Terminal # the app "Attach in Terminal" opens, e.g. iTerm
+  # attach_uri: 'myterm://run?cmd={{ urlquery .command }}'
 ```
+
+`attach_uri` replaces `terminal` when set: "Attach in Terminal" renders it and hands the result to `open`, so any URI scheme or handler app works. The template sees `.project`, `.stack`, `.service` (empty for the whole stack), `.session`, `.command` (the quoted `svx attach` command line) and `.script` (an executable that runs `.command` with svx's environment, safer when the terminal starts a fresh shell). `urlquery` and `pathescape` encode values. `svx bar` checks the template when it starts.
 
 ## Commands
 

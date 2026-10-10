@@ -53,3 +53,25 @@ func TestAttachScript(t *testing.T) {
 		t.Fatalf("AttachScript =\n%s\nwant\n%s", got, want)
 	}
 }
+
+func TestAttachURI(t *testing.T) {
+	tmpl, err := ParseAttachURI(`myterm://attach?session={{ .session }}&cmd={{ urlquery .command }}&script={{ pathescape .script }}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := renderAttachURI(tmpl, AttachURIData{"session": "work", "command": "'svx' attach", "script": "/s/a b.command"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "myterm://attach?session=work&cmd=%27svx%27+attach&script=%2Fs%2Fa%20b.command"; got != want {
+		t.Fatalf("uri = %q, want %q", got, want)
+	}
+
+	tmpl, err = ParseAttachURI(`myterm://{{ .window }}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := renderAttachURI(tmpl, AttachURIData{}); err == nil {
+		t.Fatal("unknown key rendered without error")
+	}
+}

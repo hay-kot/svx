@@ -75,8 +75,9 @@ func (b *Bar) perform(ctx context.Context, a Action) error {
 	return nil
 }
 
-// attach opens the terminal app on a script that runs svx attach. A
-// .command file is what Terminal and iTerm both run when opened.
+// attach writes a script that runs svx attach, then opens the attach URI
+// when one is configured, or else the terminal app on the script. A .command
+// file is what Terminal and iTerm both run when opened.
 func (b *Bar) attach(ctx context.Context, id domain.Identity, service string) error {
 	dir := filepath.Join(b.App.Store.Dir(), "menubar")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -88,6 +89,9 @@ func (b *Bar) attach(ctx context.Context, id domain.Identity, service string) er
 	if err := os.WriteFile(path, []byte(AttachScript(b.Executable, id, service, os.Getenv)), 0o700); err != nil { //nolint:gosec // the terminal must execute it
 		return err
 	}
+	if b.AttachURI != nil {
+		return b.openAttachURI(ctx, id, service, path)
+	}
 	terminal := b.Terminal
 	if terminal == "" {
 		terminal = "Terminal"
@@ -96,4 +100,23 @@ func (b *Bar) attach(ctx context.Context, id domain.Identity, service string) er
 		return fmt.Errorf("opening %s: %s", terminal, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+func (b *Bar) openAttachURI(ctx context.Context, id domain.Identity, service, script string) error {
+	view, err := b.App.Status(ctx, app.Target{Project: id.Project, Stack: id.Stack})
+	if err != nil {
+		return err
+	}
+	uri, err := renderAttachURI(b.AttachURI, AttachURIData{
+		"project": id.Project,
+		"stack":   id.Stack,
+		"service": service,
+		"session": view.Stack.Session,
+		"command": attachCommand(b.Executable, id, service),
+		"script":  script,
+	})
+	if err != nil {
+		return err
+	}
+	return b.App.Browser.Open(ctx, uri)
 }
