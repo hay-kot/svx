@@ -115,3 +115,8 @@ var ansiRe = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x
 // StripANSI removes terminal escape sequences, for log output read by
 // people and regexes rather than terminals.
 func StripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
+
+// BannerPrefix starts the line the _run shim prints before a service's
+// command. The banner quotes the command, so log readers that look for the
+// service's own output must skip it.
+const BannerPrefix = "svx: "

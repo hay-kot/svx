@@ -202,7 +202,7 @@ func (a *App) PlanRun(key, service string, current map[string]string) (RunPlan, 
 		return RunPlan{}, usage(fmt.Errorf("stack %s has no service %q", id, service))
 	}
 
-	banner := fmt.Sprintf("svx: %s %s", id, svc.Name)
+	banner := fmt.Sprintf("%s%s %s", domain.BannerPrefix, id, svc.Name)
 	if p, ok := svc.MainPort(); ok {
 		banner += fmt.Sprintf(" on %d", p)
 	}

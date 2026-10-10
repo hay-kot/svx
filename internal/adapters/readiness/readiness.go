@@ -12,7 +12,9 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hay-kot/appkit/httpclient"
@@ -111,7 +113,9 @@ func outputCheck(probe app.Probe) error {
 	if err != nil {
 		return err
 	}
-	if re.MatchString(domain.StripANSI(string(data))) {
+	lines := strings.Split(domain.StripANSI(string(data)), "\n")
+	lines = slices.DeleteFunc(lines, func(l string) bool { return strings.HasPrefix(l, domain.BannerPrefix) })
+	if re.MatchString(strings.Join(lines, "\n")) {
 		return nil
 	}
 	return fmt.Errorf("no output matching %q yet", probe.Value)
