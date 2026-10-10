@@ -309,6 +309,22 @@ func TestRestartKeepsPortsAndRespawns(t *testing.T) {
 	}
 }
 
+// Restarting several services brings them back in dependency order, the
+// same as up: a dependency is ready before its dependents respawn.
+func TestRestartFollowsDependencyOrder(t *testing.T) {
+	a, f := newTestApp(t, testDef(svc("db", 5432), oneshot("migrate", "db"), svc("api", 3000, "migrate")))
+	f.mux.dieOnStart["migrate"] = 0
+	mustUp(t, a, UpRequest{Target: target("one")})
+	f.mux.resetCalls()
+
+	if _, err := a.Restart(t.Context(), RestartRequest{Target: target("one"), Services: []string{"api", "migrate", "db"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.mux.respawnedNames(); !slices.Equal(got, []string{"db", "migrate", "api"}) {
+		t.Errorf("respawned = %v, want [db migrate api]", got)
+	}
+}
+
 func TestStatusStates(t *testing.T) {
 	worker := svc("worker", 0)
 	worker.Autostart = false

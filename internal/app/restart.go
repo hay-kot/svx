@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -71,17 +72,29 @@ func (a *App) Restart(ctx context.Context, req RestartRequest) (UpResult, error)
 		wg       sync.WaitGroup
 		outcomes = map[string]Outcome{}
 	)
-	noSession := func(create func(bool) error) error { return create(false) }
-	for _, name := range req.Services {
-		svc, _ := stack.Service(name)
-		wg.Go(func() {
-			o := a.launch(ctx, stack, svc, ids[name], req.NoWait, noSession)
-			mu.Lock()
-			outcomes[name] = o
-			mu.Unlock()
-		})
+	// Restarted services start level by level, as up starts them, so a
+	// whole-stack restart brings db back before the migration that needs
+	// it. Services in one level start together.
+	levels, err := domain.Levels(stack.ServiceDefs())
+	if err != nil {
+		return UpResult{}, err
 	}
-	wg.Wait()
+	noSession := func(create func(bool) error) error { return create(false) }
+	for _, level := range levels {
+		for _, name := range level {
+			if !slices.Contains(req.Services, name) {
+				continue
+			}
+			svc, _ := stack.Service(name)
+			wg.Go(func() {
+				o := a.launch(ctx, stack, svc, ids[name], req.NoWait, noSession)
+				mu.Lock()
+				outcomes[name] = o
+				mu.Unlock()
+			})
+		}
+		wg.Wait()
+	}
 
 	result := UpResult{Stack: stack, Outcomes: outcomes, Moved: nil, Reused: true}
 	if failed := failedServices(stack, outcomes); len(failed) > 0 {
