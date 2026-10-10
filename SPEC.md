@@ -23,13 +23,13 @@ The design borrows from [pitchfork](https://pitchfork.jdx.dev/): one TOML file, 
 
 ## Concepts
 
-| Term | Meaning |
-| --- | --- |
+| Term    | Meaning                                                                                                                                   |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Project | A directory containing `svx.toml`. Its name defaults to the directory name of the main checkout, so git worktrees share one project name. |
-| Service | One command from the config. It runs in one tmux window named after the service. |
-| Stack | One running copy of a project's services. It owns one tmux session, one slot and one data directory. |
-| Slot | A small integer, unique per machine among running stacks. It offsets every declared port. |
-| Link | A labelled URL a service publishes for the menu bar and `svx open`. |
+| Service | One command from the config. It runs in one tmux window named after the service.                                                          |
+| Stack   | One running copy of a project's services. It owns one tmux session, one slot and one data directory.                                      |
+| Slot    | A small integer, unique per machine among running stacks. It offsets every declared port.                                                 |
+| Link    | A labelled URL a service publishes for the menu bar and `svx open`.                                                                       |
 
 Stack identity works like this:
 
@@ -90,28 +90,28 @@ autostart = false           # only starts when named: svx up worker
 
 Top-level keys:
 
-| Key | Meaning |
-| --- | --- |
-| `project` | Project name used in session names and hostnames. |
-| `[settings]` | `port_stride` (default 10), `max_slots` (default 50), `logs` (default true). |
-| `[vars]` | Named template values, available as `.vars.<name>`. A var cannot reference another var. |
-| `[env]` | Environment variables for every service. Values are templates. |
+| Key          | Meaning                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------- |
+| `project`    | Project name used in session names and hostnames.                                       |
+| `[settings]` | `port_stride` (default 10), `max_slots` (default 50), `logs` (default true).            |
+| `[vars]`     | Named template values, available as `.vars.<name>`. A var cannot reference another var. |
+| `[env]`      | Environment variables for every service. Values are templates.                          |
 
 Service keys:
 
-| Key | Meaning |
-| --- | --- |
-| `run` | Required. Shell command, run with `sh -c` in the foreground. A template. |
-| `dir` | Working directory, relative to the checkout root. Defaults to the root. |
-| `port` | Base number of the service's primary port, or "auto" for any free port. |
-| `ports` | Extra named ports, each with a base number. |
-| `env` | Extra environment variables for this service. Values are templates. |
-| `depends` | Services that must be ready, or finished if oneshot, before this one starts. |
-| `ready` | Readiness check: one of `http`, `cmd`, `output` (regex) or `delay`, plus `timeout` (default 60s). |
-| `oneshot` | The command is expected to exit. Exit code 0 counts as ready, anything else fails `up`. |
-| `links` | Label to URL. A value starting with `/` is relative to the service's own URL. |
-| `autostart` | Default true. When false, the service starts only when named on the command line. |
-| `stop_signal`, `stop_timeout` | Defaults `SIGTERM` and `10s`. |
+| Key                           | Meaning                                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------------------------- |
+| `run`                         | Required. Shell command, run with `sh -c` in the foreground. A template.                          |
+| `dir`                         | Working directory, relative to the checkout root. Defaults to the root.                           |
+| `port`                        | Base number of the service's primary port, or "auto" for any free port.                           |
+| `ports`                       | Extra named ports, each with a base number.                                                       |
+| `env`                         | Extra environment variables for this service. Values are templates.                               |
+| `depends`                     | Services that must be ready, or finished if oneshot, before this one starts.                      |
+| `ready`                       | Readiness check: one of `http`, `cmd`, `output` (regex) or `delay`, plus `timeout` (default 60s). |
+| `oneshot`                     | The command is expected to exit. Exit code 0 counts as ready, anything else fails `up`.           |
+| `links`                       | Label to URL. A value starting with `/` is relative to the service's own URL.                     |
+| `autostart`                   | Default true. When false, the service starts only when named on the command line.                 |
+| `stop_signal`, `stop_timeout` | Defaults `SIGTERM` and `10s`.                                                                     |
 
 With no `ready` key, a service with a `port` is ready when that port accepts a TCP connection. A service with no port is ready once its window has stayed alive for one second.
 
@@ -121,31 +121,31 @@ Validation happens before anything starts. Unknown keys, unknown `depends` names
 
 Templates use Go's `text/template` with `missingkey=error`, so a typo fails `svx up` instead of rendering an empty string. `run`, `dir`, `env` values, `vars`, `links` and the `ready` fields are templates.
 
-| Expression | Value |
-| --- | --- |
-| `.project.name`, `.project.root` | Project name and the checkout root path. |
-| `.stack.name`, `.stack.slot` | Stack name and slot number. |
-| `.stack.dir` | Per-stack data directory, `<root>/.svx/<stack>/`, created by `svx up`. |
-| `.stack.session` | The tmux session name. |
-| `.service.name` | The service being rendered. Not set in `[vars]` and top-level `[env]`. |
-| `.port`, `.ports.<name>` | The current service's own resolved ports. |
-| `.vars.<name>` | A value from `[vars]`. |
-| `port "svc"`, `port "svc" "name"` | Another service's primary or named port. |
-| `url "svc"` | Another service's base URL, `http://127.0.0.1:<port>` until the proxy is on. |
-| `env "NAME"` | A variable from the environment `svx up` was run in. Missing is an error. |
-| `snake`, `slug`, `upper` | String helpers, for example `shop_amber_finch` for a database name. |
+| Expression                        | Value                                                                        |
+| --------------------------------- | ---------------------------------------------------------------------------- |
+| `.project.name`, `.project.root`  | Project name and the checkout root path.                                     |
+| `.stack.name`, `.stack.slot`      | Stack name and slot number.                                                  |
+| `.stack.dir`                      | Per-stack data directory, `<root>/.svx/<stack>/`, created by `svx up`.       |
+| `.stack.session`                  | The tmux session name.                                                       |
+| `.service.name`                   | The service being rendered. Not set in `[vars]` and top-level `[env]`.       |
+| `.port`, `.ports.<name>`          | The current service's own resolved ports.                                    |
+| `.vars.<name>`                    | A value from `[vars]`.                                                       |
+| `port "svc"`, `port "svc" "name"` | Another service's primary or named port.                                     |
+| `url "svc"`                       | Another service's base URL, `http://127.0.0.1:<port>` until the proxy is on. |
+| `env "NAME"`                      | A variable from the environment `svx up` was run in. Missing is an error.    |
+| `snake`, `slug`, `upper`          | String helpers, for example `shop_amber_finch` for a database name.          |
 
 All ports are allocated before any template is rendered. A service can therefore reference the port of a service that starts after it.
 
 Every service also gets these environment variables without asking:
 
-| Variable | Value |
-| --- | --- |
-| `SVX_PROJECT`, `SVX_STACK`, `SVX_SLOT`, `SVX_STACK_DIR` | Stack identity. |
-| `SVX_SERVICE` | This service's name. |
-| `PORT`, `PORT_<NAME>` | This service's primary and named ports. |
-| `SVX_PORT_<SERVICE>`, `SVX_PORT_<SERVICE>_<NAME>` | Every service's ports. |
-| `SVX_URL_<SERVICE>` | Every service's base URL. |
+| Variable                                                | Value                                   |
+| ------------------------------------------------------- | --------------------------------------- |
+| `SVX_PROJECT`, `SVX_STACK`, `SVX_SLOT`, `SVX_STACK_DIR` | Stack identity.                         |
+| `SVX_SERVICE`                                           | This service's name.                    |
+| `PORT`, `PORT_<NAME>`                                   | This service's primary and named ports. |
+| `SVX_PORT_<SERVICE>`, `SVX_PORT_<SERVICE>_<NAME>`       | Every service's ports.                  |
+| `SVX_URL_<SERVICE>`                                     | Every service's base URL.               |
 
 Names are upper-cased with `-` turned into `_`. Later sources win in this order: the environment `svx up` ran in, svx's injected variables, top-level `[env]`, then the service's `env`.
 
@@ -218,22 +218,22 @@ Other rules:
 
 Commands act on the stack for the current checkout unless `--name` or `SVX_STACK` says otherwise. Bare `svx` is `svx status`.
 
-| Command | What it does |
-| --- | --- |
-| `svx up [service...]` | Start the stack, or the named services plus their dependencies. Safe to repeat. Flags: `--name`, `--attach`, `--no-wait`. |
-| `svx down` | Stop the stack. Flags: `--all` for every stack on the machine, `--purge` to delete its data directory. |
-| `svx status` | Services, state, ports and links for this stack. `--json` for scripts. |
-| `svx ls` | Every stack on the machine, across projects. `--json` for scripts. |
-| `svx attach [service]` | Attach to the session, optionally selecting a window. |
-| `svx restart <service...>` | Restart services in place, keeping their ports. |
-| `svx logs <service>` | Print a service's log. Flags: `-f` to follow, `--raw` to keep colour codes. |
-| `svx env` | Print the stack's variables. `--format shell`, `dotenv` or `json`; `--service` for one service's view. |
-| `svx exec -- <cmd>` | Run a command with the stack's environment, for tests and one-off scripts. |
-| `svx open [link]` | Open a link in the browser. With no argument, list them. |
-| `svx config` | Print the fully rendered config for this stack without starting anything. |
-| `svx bar` | Print menu bar output. See Menu bar. |
-| `svx init` | Write a commented starter `svx.toml` and add `.svx/` to `.gitignore`. |
-| `svx doctor` | Check the tmux version, state directory, stale stacks and menu bar setup. |
+| Command                    | What it does                                                                                                              |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `svx up [service...]`      | Start the stack, or the named services plus their dependencies. Safe to repeat. Flags: `--name`, `--attach`, `--no-wait`. |
+| `svx down`                 | Stop the stack. Flags: `--all` for every stack on the machine, `--purge` to delete its data directory.                    |
+| `svx status`               | Services, state, ports and links for this stack. `--json` for scripts.                                                    |
+| `svx ls`                   | Every stack on the machine, across projects. `--json` for scripts.                                                        |
+| `svx attach [service]`     | Attach to the session, optionally selecting a window.                                                                     |
+| `svx restart <service...>` | Restart services in place, keeping their ports.                                                                           |
+| `svx logs <service>`       | Print a service's log. Flags: `-f` to follow, `--raw` to keep colour codes.                                               |
+| `svx env`                  | Print the stack's variables. `--format shell`, `dotenv` or `json`; `--service` for one service's view.                    |
+| `svx exec -- <cmd>`        | Run a command with the stack's environment, for tests and one-off scripts.                                                |
+| `svx open [link]`          | Open a link in the browser. With no argument, list them.                                                                  |
+| `svx config`               | Print the fully rendered config for this stack without starting anything.                                                 |
+| `svx bar`                  | Print menu bar output. See Menu bar.                                                                                      |
+| `svx init`                 | Write a commented starter `svx.toml` and add `.svx/` to `.gitignore`.                                                     |
+| `svx doctor`               | Check the tmux version, state directory, stale stacks and menu bar setup.                                                 |
 
 `svx config` matters more than it looks. It is how you debug a template before a service starts with the wrong port.
 
@@ -243,10 +243,10 @@ Exit codes: 0 for success, 1 for a failed or timed-out service, 2 for a config o
 
 svx keeps one small directory of state, `$XDG_STATE_HOME/svx`, defaulting to `~/.local/state/svx` on macOS as well as Linux. It exists for two things tmux cannot do: hold port leases, and tell other programs what is running.
 
-| Path | Contents |
-| --- | --- |
-| `lock` | The file lock taken during slot allocation and state writes. |
-| `stacks/<project>--<stack>.json` | The public record: names, root, session, slot, status, services, ports and links. |
+| Path                                 | Contents                                                                                             |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `lock`                               | The file lock taken during slot allocation and state writes.                                         |
+| `stacks/<project>--<stack>.json`     | The public record: names, root, session, slot, status, services, ports and links.                    |
 | `stacks/<project>--<stack>.env.json` | The environment snapshot and rendered commands the shim reads. Mode 0600, since it can hold secrets. |
 
 The public record looks like this, and its shape is a versioned contract:
@@ -340,18 +340,18 @@ Known limits to settle when this milestone starts:
 
 One Go module producing one static binary, `svx`, for macOS and Linux.
 
-| Package | Responsibility |
-| --- | --- |
-| `cmd/svx` | Command wiring and flag parsing only. |
-| `internal/config` | Load, merge and validate `svx.toml` and `svx.local.toml`. |
-| `internal/tmpl` | Template context, helper functions and rendering. |
-| `internal/ports` | Slot allocation, listen tests and leases. |
-| `internal/state` | State directory, file lock, atomic writes and reconciliation. |
-| `internal/tmux` | A small interface over the `tmux` binary: sessions, windows, panes, options. |
-| `internal/stack` | The `up`, `down`, `restart` and `status` logic, including the dependency graph. |
-| `internal/ready` | Readiness checks. |
-| `internal/bar` | SwiftBar output and plugin install. |
-| `internal/proxy` | The later proxy milestone. |
+| Package           | Responsibility                                                                  |
+| ----------------- | ------------------------------------------------------------------------------- |
+| `cmd/svx`         | Command wiring and flag parsing only.                                           |
+| `internal/config` | Load, merge and validate `svx.toml` and `svx.local.toml`.                       |
+| `internal/tmpl`   | Template context, helper functions and rendering.                               |
+| `internal/ports`  | Slot allocation, listen tests and leases.                                       |
+| `internal/state`  | State directory, file lock, atomic writes and reconciliation.                   |
+| `internal/tmux`   | A small interface over the `tmux` binary: sessions, windows, panes, options.    |
+| `internal/stack`  | The `up`, `down`, `restart` and `status` logic, including the dependency graph. |
+| `internal/ready`  | Readiness checks.                                                               |
+| `internal/bar`    | SwiftBar output and plugin install.                                             |
+| `internal/proxy`  | The later proxy milestone.                                                      |
 
 Conventions:
 
@@ -366,13 +366,13 @@ Conventions:
 
 Each milestone ends with something usable and a check that proves it.
 
-| # | Scope | Done when |
-| --- | --- | --- |
-| 1 | Config, templating, slot allocation, state, the shim, and `up`, `down`, `status`, `ls`, `attach`, `config`. No dependencies or readiness yet. | Two checkouts of a sample repo run `svx up` at once and get different ports. `svx down` in one leaves the other running. |
-| 2 | `depends`, readiness checks, `oneshot`, `restart`, logs, `env`, `exec`, `init`, `doctor`. | A service waits for a failing dependency and `up` exits 1 naming it. `svx exec -- env` shows the stack's ports. |
-| 3 | Links, `open`, `svx bar` and its installer. | Starting a second stack makes its links appear in the menu bar within a second or two, and clicking one opens the right port. |
-| 4 | HTTP proxy with hostnames, then HTTPS. | `http://web.<stack>.shop.localhost:8088` reaches the right stack, and hot reload works through it. |
-| 5 | Candidates: restart-on-failure in the shim, a shell hook that runs `up` on entering a directory, a native menu bar app. | Decided when 1 to 4 are in daily use. |
+| #   | Scope                                                                                                                                         | Done when                                                                                                                     |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Config, templating, slot allocation, state, the shim, and `up`, `down`, `status`, `ls`, `attach`, `config`. No dependencies or readiness yet. | Two checkouts of a sample repo run `svx up` at once and get different ports. `svx down` in one leaves the other running.      |
+| 2   | `depends`, readiness checks, `oneshot`, `restart`, logs, `env`, `exec`, `init`, `doctor`.                                                     | A service waits for a failing dependency and `up` exits 1 naming it. `svx exec -- env` shows the stack's ports.               |
+| 3   | Links, `open`, `svx bar` and its installer.                                                                                                   | Starting a second stack makes its links appear in the menu bar within a second or two, and clicking one opens the right port. |
+| 4   | HTTP proxy with hostnames, then HTTPS.                                                                                                        | `http://web.<stack>.shop.localhost:8088` reaches the right stack, and hot reload works through it.                            |
+| 5   | Candidates: restart-on-failure in the shim, a shell hook that runs `up` on entering a directory, a native menu bar app.                       | Decided when 1 to 4 are in daily use.                                                                                         |
 
 Milestone 1 is the one to get right. Everything later reads the state it writes.
 
@@ -380,14 +380,14 @@ Milestone 1 is the one to get right. Everything later reads the state it writes.
 
 These are defaults I chose so the spec is complete. Each is cheap to change now and expensive later.
 
-| Decision | Chosen | Alternative |
-| --- | --- | --- |
-| Where windows go | A dedicated session per stack, so `down` is one kill and stacks never mix. | New windows in the session you are already in, prefixed with the stack name. Closer to "my existing workflow", harder to stop cleanly. |
-| Default stack name | A stable two-word name hashed from the checkout path. | The git branch or worktree directory name. More meaningful, but it changes when you switch branch. |
-| Port scheme | Base plus slot times a stride of 10. Predictable and easy to read. | Random free ports from a range. No collisions to think about, but nothing memorable. |
-| Environment | A snapshot of the shell that ran `svx up`, stored in a 0600 file. | Only the config's `[env]`, with nothing from your shell written to disk. |
-| Menu bar | A SwiftBar plugin. Needs SwiftBar installed. | A native app in milestone 5, or sooner if SwiftBar is a non-starter. |
-| Binary name | `svx`. No command-line tool by that name turned up in a web search. | Registry checks on Homebrew, npm and GitHub are still to do before publishing. |
+| Decision           | Chosen                                                                     | Alternative                                                                                                                            |
+| ------------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Where windows go   | A dedicated session per stack, so `down` is one kill and stacks never mix. | New windows in the session you are already in, prefixed with the stack name. Closer to "my existing workflow", harder to stop cleanly. |
+| Default stack name | A stable two-word name hashed from the checkout path.                      | The git branch or worktree directory name. More meaningful, but it changes when you switch branch.                                     |
+| Port scheme        | Base plus slot times a stride of 10. Predictable and easy to read.         | Random free ports from a range. No collisions to think about, but nothing memorable.                                                   |
+| Environment        | A snapshot of the shell that ran `svx up`, stored in a 0600 file.          | Only the config's `[env]`, with nothing from your shell written to disk.                                                               |
+| Menu bar           | A SwiftBar plugin. Needs SwiftBar installed.                               | A native app in milestone 5, or sooner if SwiftBar is a non-starter.                                                                   |
+| Binary name        | `svx`. No command-line tool by that name turned up in a web search.        | Registry checks on Homebrew, npm and GitHub are still to do before publishing.                                                         |
 
 ## Starter prompt
 

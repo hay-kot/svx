@@ -22,40 +22,44 @@ svx attach web  # jump into a service's window
 svx down
 ```
 
-Try it on the sample project:
+Try it on the demo project, which shows dependency ordering with a live progress view:
 
 ```bash
-cd testdata/sample && svx up
+mise run demo          # db and cache start together, migrate waits for db, api waits for both
+cd testdata/demo && svx up flaky   # a service that fails, and what svx shows for it
+mise run demo:down
 ```
+
+`testdata/sample` is a smaller project the end-to-end tests use.
 
 ## Configuration
 
 `svx.yaml` lives at the repo root and is found by walking up from the current directory. `svx.local.yaml` beside it is merged on top for personal overrides (deep merge, keep it gitignored).
 
 ```yaml
-project: shop               # optional, defaults to the main checkout's directory name
+project: shop # optional, defaults to the main checkout's directory name
 
 settings:
-  port_stride: 10           # each slot offsets every port by this much
+  port_stride: 10 # each slot offsets every port by this much
   max_slots: 50
-  logs: true                # pipe windows to .svx/<stack>/logs/<service>.log
-  menubar: true             # false hides this project's stacks from the menu bar
+  logs: true # pipe windows to .svx/<stack>/logs/<service>.log
+  menubar: true # false hides this project's stacks from the menu bar
 
 vars:
-  db_name: 'shop_{{ snake .stack.name }}'
+  db_name: "shop_{{ snake .stack.name }}"
 
 env:
   REDIS_URL: 'redis://127.0.0.1:{{ port "redis" }}'
-  DATABASE_NAME: '{{ .vars.db_name }}'
+  DATABASE_NAME: "{{ .vars.db_name }}"
 
 services:
   redis:
-    run: 'redis-server --port {{ .port }} --dir {{ .stack.dir }}'
+    run: "redis-server --port {{ .port }} --dir {{ .stack.dir }}"
     port: 6379
 
   migrate:
     run: bin/migrate
-    oneshot: true            # must exit 0 before dependents start
+    oneshot: true # must exit 0 before dependents start
     depends: [redis]
 
   api:
@@ -69,7 +73,7 @@ services:
     stop_timeout: 5s
 
   web:
-    run: 'npm run dev -- --port {{ .port }} --strictPort'
+    run: "npm run dev -- --port {{ .port }} --strictPort"
     dir: web
     port: 5173
     ports: { hmr: 24678 }
@@ -81,7 +85,7 @@ services:
   worker:
     run: go run ./cmd/worker
     depends: [redis]
-    autostart: false         # only starts when named: svx up worker
+    autostart: false # only starts when named: svx up worker
 ```
 
 Service keys: `run` (required), `dir`, `port` (number or `auto`), `ports`, `env`, `depends`, `ready` (one of `http`, `cmd`, `output`, `delay`, plus `timeout`), `oneshot`, `links`, `autostart`, `stop_signal`, `stop_timeout`. Unknown keys are errors.
@@ -92,18 +96,18 @@ Without `ready`, a service with a `port` is ready when the port accepts a TCP co
 
 `run`, `dir`, `env` values, `vars`, `links` and `ready` values are Go templates with `missingkey=error`, so a typo fails `svx up` instead of rendering empty.
 
-| Expression | Value |
-| --- | --- |
-| `.project.name`, `.project.root` | Project name and checkout root |
-| `.stack.name`, `.stack.slot`, `.stack.dir`, `.stack.session` | Stack identity and its data directory |
-| `.service.name` | The service being rendered (not in `vars` or top-level `env`) |
-| `.port`, `.ports.<name>` | This service's ports |
-| `.vars.<name>` | A value from `vars` |
-| `port "svc"`, `port "svc" "name"` | Another service's port |
-| `url "svc"` | Another service's base URL |
-| `env "NAME"` | A variable from the shell `svx up` ran in |
-| `secret "env:NAME"`, `secret "file:/path"` | A secret, resolved with [appkit/secret](https://github.com/hay-kot/appkit) |
-| `snake`, `slug`, `upper`, `lower` | String helpers |
+| Expression                                                   | Value                                                                      |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `.project.name`, `.project.root`                             | Project name and checkout root                                             |
+| `.stack.name`, `.stack.slot`, `.stack.dir`, `.stack.session` | Stack identity and its data directory                                      |
+| `.service.name`                                              | The service being rendered (not in `vars` or top-level `env`)              |
+| `.port`, `.ports.<name>`                                     | This service's ports                                                       |
+| `.vars.<name>`                                               | A value from `vars`                                                        |
+| `port "svc"`, `port "svc" "name"`                            | Another service's port                                                     |
+| `url "svc"`                                                  | Another service's base URL                                                 |
+| `env "NAME"`                                                 | A variable from the shell `svx up` ran in                                  |
+| `secret "env:NAME"`, `secret "file:/path"`                   | A secret, resolved with [appkit/secret](https://github.com/hay-kot/appkit) |
+| `snake`, `slug`, `upper`, `lower`                            | String helpers                                                             |
 
 Every service also gets `SVX_PROJECT`, `SVX_STACK`, `SVX_SLOT`, `SVX_STACK_DIR`, `SVX_SERVICE`, `PORT`, `PORT_<NAME>`, `SVX_PORT_<SERVICE>[_<NAME>]` and `SVX_URL_<SERVICE>`. Later sources win: your shell, then injected variables, then top-level `env`, then the service's `env`.
 
@@ -116,28 +120,28 @@ Run `svx config` to see everything rendered for your stack without starting anyt
 ```yaml
 log_level: info
 menubar:
-  enabled: true       # false: `svx bar` exits at once, so the menu bar stays off
-  terminal: Terminal  # the app "Attach in Terminal" opens, e.g. iTerm
+  enabled: true # false: `svx bar` exits at once, so the menu bar stays off
+  terminal: Terminal # the app "Attach in Terminal" opens, e.g. iTerm
 ```
 
 ## Commands
 
-| Command | What it does |
-| --- | --- |
-| `svx up [service...]` | Start the stack or the named services plus dependencies. Safe to repeat. `--name`, `--attach`, `--no-wait` |
-| `svx down` | Stop the stack. `--all`, `--purge` |
-| `svx status` | Services, state, ports and links. `--json` |
-| `svx ls` | Every stack on the machine. `--json` |
-| `svx attach [service]` | Attach, or switch client when already in tmux |
-| `svx restart <service...>` | Restart in place, keeping ports |
-| `svx logs <service>` | Print a log. `-f`, `--raw`, `-n` |
-| `svx env` | Print the stack's variables. `--format shell\|dotenv\|json`, `--service` |
-| `svx exec -- <cmd>` | Run a command with the stack's environment |
-| `svx open [link]` | Open a link, or list them |
-| `svx config` | Print the rendered config |
-| `svx bar` | Run the menu bar. `--install` starts it now and at login, `--uninstall` removes that |
-| `svx init` | Write a starter `svx.yaml` |
-| `svx doctor` | Check tmux, state, stale stacks and the menu bar |
+| Command                    | What it does                                                                                               |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `svx up [service...]`      | Start the stack or the named services plus dependencies. Safe to repeat. `--name`, `--attach`, `--no-wait` |
+| `svx down`                 | Stop the stack. `--all`, `--purge`                                                                         |
+| `svx status`               | Services, state, ports and links. `--json`                                                                 |
+| `svx ls`                   | Every stack on the machine. `--json`                                                                       |
+| `svx attach [service]`     | Attach, or switch client when already in tmux                                                              |
+| `svx restart <service...>` | Restart in place, keeping ports, in dependency order                                                       |
+| `svx logs <service>`       | Print a log. `-f`, `--raw`, `-n`                                                                           |
+| `svx env`                  | Print the stack's variables. `--format shell\|dotenv\|json`, `--service`                                   |
+| `svx exec -- <cmd>`        | Run a command with the stack's environment                                                                 |
+| `svx open [link]`          | Open a link, or list them                                                                                  |
+| `svx config`               | Print the rendered config                                                                                  |
+| `svx bar`                  | Run the menu bar. `--install` starts it now and at login, `--uninstall` removes that                       |
+| `svx init`                 | Write a starter `svx.yaml`                                                                                 |
+| `svx doctor`               | Check tmux, state, stale stacks and the menu bar                                                           |
 
 Commands act on the current checkout's stack. `--name` (or `SVX_STACK`) picks another stack name, which is how one checkout runs two stacks. `--project` with `--name` targets a stack without reading any config.
 
@@ -159,7 +163,7 @@ svx bar --install   # run it now and at every login, as a launchd agent
 svx bar --uninstall
 ```
 
-The icon shows how many stacks are running. Each stack lists its links with their ports, services that hold a port but have no link, dead services, and "Attach in Terminal" and "Stop Stack" actions. The menu re-reads state every two seconds and whenever it opens.
+The icon shows how many stacks are running. Each stack is a bold row with a health dot and a summary (`5 running`, `1 failed`); hover it for Restart All Services, Attach in Terminal, Stop Stack and a restart for each service. Under it, each running service with a URL shows its port and opens on click. Hold ⌥ and the same rows read "Restart <service>". Failed services show in red and open their window in Terminal. Running services with nothing to open share one "also running" line, and finished oneshots and idle services stay out of the list. Restarts follow dependency order. The menu re-reads state every two seconds and whenever it opens.
 
 To opt out, set `menubar.enabled: false` in the user config, or `settings.menubar: false` in a project to hide just that project. The login item copies your `PATH` at install time, since launchd starts agents without your shell profile; run `svx bar --install` again after moving tmux or svx.
 
@@ -178,17 +182,17 @@ tmux is the source of truth for what is running. A stack is running while its se
 
 The code follows ports and adapters:
 
-| Package | Role |
-| --- | --- |
-| `internal/domain` | The model: definitions, identity and naming, the dependency graph, slot and port math, validation, template rendering. No I/O. |
-| `internal/app` | Use cases (`Up`, `Down`, `Restart`, `Status`, ...) and the port interfaces they drive. Unit tested against fakes. |
-| `internal/adapters/yamlproject` | Finds, merges and maps `svx.yaml` |
-| `internal/adapters/statefs` | State directory, flock, atomic writes |
-| `internal/adapters/tmux` | The tmux binary |
-| `internal/adapters/readiness` | HTTP, TCP, command and log readiness probes |
-| `internal/adapters/menubar` | The macOS menu bar app and its launchd login item |
-| `internal/adapters/system` | Signals, port probes, files, browser, secrets |
-| `internal/commands` | CLI wiring and output only |
+| Package                         | Role                                                                                                                           |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `internal/domain`               | The model: definitions, identity and naming, the dependency graph, slot and port math, validation, template rendering. No I/O. |
+| `internal/app`                  | Use cases (`Up`, `Down`, `Restart`, `Status`, ...) and the port interfaces they drive. Unit tested against fakes.              |
+| `internal/adapters/yamlproject` | Finds, merges and maps `svx.yaml`                                                                                              |
+| `internal/adapters/statefs`     | State directory, flock, atomic writes                                                                                          |
+| `internal/adapters/tmux`        | The tmux binary                                                                                                                |
+| `internal/adapters/readiness`   | HTTP, TCP, command and log readiness probes                                                                                    |
+| `internal/adapters/menubar`     | The macOS menu bar app and its launchd login item                                                                              |
+| `internal/adapters/system`      | Signals, port probes, files, browser, secrets                                                                                  |
+| `internal/commands`             | CLI wiring and output only                                                                                                     |
 
 ## Development
 

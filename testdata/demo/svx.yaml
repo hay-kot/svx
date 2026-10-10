@@ -1,0 +1,55 @@
+# A demo of dependency ordering and readiness. Every service is sh or
+# python3 with sleeps standing in for real startup work, so it runs
+# anywhere. Try:
+#
+#   svx up            # db and cache start together, the rest wait in order
+#   svx up flaky      # a dependency that fails, and what svx shows for it
+#   svx down
+project: demo
+
+settings:
+  port_stride: 10
+
+vars:
+  db_name: 'demo_{{ snake .stack.name }}'
+
+services:
+  db:
+    run: 'echo "initialising {{ .vars.db_name }}"; sleep 2; echo "ready to accept connections"; exec sleep 86400'
+    port: 25432
+    ready: { output: 'ready to accept connections', timeout: 10s }
+
+  cache:
+    run: 'sleep 1; echo "cache warm"; exec sleep 86400'
+    port: 26379
+    ready: { output: 'cache warm', timeout: 10s }
+
+  migrate:
+    run: 'echo "migrating {{ .vars.db_name }}"; sleep 1.5; echo "3 migrations applied"'
+    depends: [db]
+    oneshot: true
+
+  api:
+    run: 'sleep 1; exec python3 -m http.server {{ .port }} --bind 127.0.0.1'
+    port: 28080
+    depends: [migrate, cache]
+    ready: { http: /, timeout: 15s }
+    links: { API: / }
+
+  worker:
+    run: 'while true; do echo "polling {{ url "api" }}"; sleep 5; done'
+    depends: [api]
+    ready: { delay: 500ms }
+
+  web:
+    run: 'echo "api is at $API_URL"; sleep 0.5; exec python3 -m http.server {{ .port }} --bind 127.0.0.1'
+    port: 25173
+    depends: [api]
+    env:
+      API_URL: '{{ url "api" }}'
+    links: { App: / }
+
+  flaky:
+    run: 'echo "connecting to {{ url "db" }}"; sleep 1; echo "error: connection refused" >&2; exit 1'
+    depends: [db]
+    autostart: false

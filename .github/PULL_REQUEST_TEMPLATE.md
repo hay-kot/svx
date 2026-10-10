@@ -4,9 +4,9 @@ Fixes #
 
 ## Proposed Changes
 
-  -
-  -
-  -
+-
+-
+-
 
 ## Checklist
 
