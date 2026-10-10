@@ -15,7 +15,7 @@ Needs tmux 3.2 or newer. `svx doctor` checks. The macOS menu bar needs a build w
 ## Quick start
 
 ```bash
-svx init        # writes svx.yaml and adds .svx/ to .gitignore
+svx init        # writes svx.yaml and adds .svx/ to .gitignore (--stealth: .git/info/exclude)
 svx up          # starts every autostart service in dependency order
 svx             # same as svx status
 svx attach web  # jump into a service's window
@@ -34,7 +34,9 @@ mise run demo:down
 
 ## Configuration
 
-`svx.yaml` lives at the repo root and is found by walking up from the current directory. `svx.local.yaml` beside it is merged on top for personal overrides (deep merge, keep it gitignored).
+`svx.yaml` lives at the repo root and is found by walking up from the current directory. `svx.local.yaml` beside it is merged on top for personal overrides (deep merge, keep it gitignored). A repo without an `svx.yaml` can use one kept elsewhere, such as your dotfiles, through `projects` in the [user config](#user-config).
+
+To use svx in a repo without committing anything, run `svx init --stealth`. It ignores `svx.yaml`, `svx.local.yaml` and `.svx/` in `.git/info/exclude`, which git never tracks, instead of `.gitignore`.
 
 ```yaml
 project: shop # optional, defaults to the main checkout's directory name
@@ -123,7 +125,14 @@ menubar:
   enabled: true # false: `svx bar` exits at once, so the menu bar stays off
   terminal: Terminal # the app "Attach in Terminal" opens, e.g. iTerm
   # attach_uri: 'myterm://run?cmd={{ urlquery .command }}'
+projects: # svx.yaml files for repos that have none of their own
+  shop: ~/dotfiles/svx/shop.yaml # checkout directory name
+  ~/code/api: ~/dotfiles/svx/api.yaml # full path
+  'shop-*': svx/shop.yaml # glob, relative to this config file
+  '~/work/*/web': ~/dotfiles/svx/web.yaml # a glob with a / matches the full path
 ```
+
+`projects` applies only when no `svx.yaml` is found walking up. svx looks up the checkout root (the nearest directory with `.git`, else the current directory) in this order: full path, directory name, then globs, where the longest matching glob wins. The checkout root becomes the project root, so service `dir`s, `svx.local.yaml` and `.svx/` resolve against the repo as usual. Exclude `.svx/` in `.git/info/exclude` to keep it out of `git status`.
 
 `attach_uri` replaces `terminal` when set: "Attach in Terminal" renders it and hands the result to `open`, so any URI scheme or handler app works. The template sees `.project`, `.stack`, `.service` (empty for the whole stack), `.session`, `.command` (the quoted `svx attach` command line) and `.script` (an executable that runs `.command` with svx's environment, safer when the terminal starts a fresh shell). `urlquery` and `pathescape` encode values. `svx bar` checks the template when it starts.
 
@@ -143,7 +152,7 @@ menubar:
 | `svx open [link]`          | Open a link, or list them                                                                                  |
 | `svx config`               | Print the rendered config                                                                                  |
 | `svx bar`                  | Run the menu bar. `--install` starts it now and at login, `--uninstall` removes that                       |
-| `svx init`                 | Write a starter `svx.yaml`                                                                                 |
+| `svx init`                 | Write a starter `svx.yaml`. `--stealth` ignores svx's files in `.git/info/exclude`, `svx.yaml` included    |
 | `svx doctor`               | Check tmux, state, stale stacks and the menu bar                                                           |
 
 Commands act on the current checkout's stack. `--name` (or `SVX_STACK`) picks another stack name, which is how one checkout runs two stacks. `--project` with `--name` targets a stack without reading any config.

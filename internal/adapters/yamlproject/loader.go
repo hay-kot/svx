@@ -28,17 +28,26 @@ var (
 )
 
 // Repository implements app.ProjectRepository on the filesystem.
-type Repository struct{}
+type Repository struct {
+	// Projects maps checkouts to config files kept outside the repo, from
+	// the user config. Load consults it only when no svx.yaml is found.
+	Projects map[string]string
+}
 
 var _ app.ProjectRepository = Repository{}
 
-// Load walks up from dir to the nearest svx.yaml.
-func (Repository) Load(dir string) (app.Project, error) {
-	path, err := find(dir)
+// Load walks up from dir to the nearest svx.yaml. When there is none, it
+// looks up the checkout root (the nearest directory holding .git, else dir
+// itself) in r.Projects and uses that root with the mapped config file.
+func (r Repository) Load(dir string) (app.Project, error) {
+	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return app.Project{}, err
 	}
-	root := filepath.Dir(path)
+	root, path, err := r.find(abs)
+	if err != nil {
+		return app.Project{}, err
+	}
 
 	def, err := loadFiles(path, findIn(root, localNames))
 	if err != nil {
@@ -47,20 +56,79 @@ func (Repository) Load(dir string) (app.Project, error) {
 	return app.Project{Def: def, Root: root, CheckoutName: checkoutName(root)}, nil
 }
 
-func find(dir string) (string, error) {
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return "", err
+func (r Repository) find(abs string) (root, path string, err error) {
+	if p := walkUp(abs, func(cur string) string { return findIn(cur, mainNames) }); p != "" {
+		return filepath.Dir(p), p, nil
 	}
-	for cur := abs; ; cur = filepath.Dir(cur) {
-		if p := findIn(cur, mainNames); p != "" {
-			return p, nil
+	if len(r.Projects) > 0 {
+		// Only the checkout root is matched: matching every parent would let
+		// a broad glob claim a subdirectory before a specific one reaches
+		// the root.
+		root := walkUp(abs, func(cur string) string {
+			if _, err := os.Stat(filepath.Join(cur, ".git")); err == nil {
+				return cur
+			}
+			return ""
+		})
+		if root == "" {
+			root = abs
+		}
+		if file := matchProject(r.Projects, root); file != "" {
+			if _, err := os.Stat(file); err != nil {
+				return "", "", fmt.Errorf("config for %s: %w", root, err)
+			}
+			return root, file, nil
+		}
+	}
+	return "", "", &app.UsageError{Err: fmt.Errorf("%w in %s or any parent directory, create one with `svx init`", app.ErrNoProject, abs)}
+}
+
+// walkUp calls fn on dir and each parent in turn and returns the first
+// non-empty result.
+func walkUp(dir string, fn func(string) string) string {
+	for cur := dir; ; cur = filepath.Dir(cur) {
+		if v := fn(cur); v != "" {
+			return v
 		}
 		if filepath.Dir(cur) == cur {
-			break
+			return ""
 		}
 	}
-	return "", &app.UsageError{Err: fmt.Errorf("%w in %s or any parent directory, create one with `svx init`", app.ErrNoProject, abs)}
+}
+
+// matchProject returns the config file projects maps dir to, trying in
+// order: an exact full path, an exact directory name, then globs. A glob
+// with a path separator matches the full path, others match the directory
+// name. When several globs match, the longest wins, so a specific pattern
+// beats a catch-all; equal lengths fall back to sort order so the pick is
+// stable.
+func matchProject(projects map[string]string, dir string) string {
+	if file, ok := projects[dir]; ok {
+		return file
+	}
+	base := filepath.Base(dir)
+	if file, ok := projects[base]; ok {
+		return file
+	}
+
+	var best string
+	for pattern := range projects {
+		target := base
+		if strings.ContainsRune(pattern, filepath.Separator) {
+			target = dir
+		}
+		ok, err := filepath.Match(pattern, target)
+		if err != nil || !ok {
+			continue
+		}
+		if len(pattern) > len(best) || (len(pattern) == len(best) && pattern < best) {
+			best = pattern
+		}
+	}
+	if best == "" {
+		return ""
+	}
+	return projects[best]
 }
 
 func findIn(dir string, names []string) string {

@@ -25,7 +25,15 @@ type ProjectRepository interface {
 	Load(dir string) (Project, error)
 	// Init writes a starter config in dir and ignores the data directory.
 	// It returns the files it wrote or changed.
-	Init(dir string) ([]string, error)
+	Init(dir string, opts InitOptions) ([]string, error)
+}
+
+// InitOptions controls how Init keeps svx's files out of git.
+type InitOptions struct {
+	// Stealth ignores svx's files, svx.yaml included, in the repo's
+	// untracked info/exclude file instead of .gitignore, so the repo shows
+	// no trace of svx.
+	Stealth bool
 }
 
 // StateStore persists stacks. Save writes both the public record and the
