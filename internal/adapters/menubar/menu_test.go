@@ -75,7 +75,6 @@ func TestBuildStack(t *testing.T) {
 	stackActions := func(id domain.Identity, services ...Entry) []Entry {
 		out := []Entry{
 			restart(id, "Restart All Services", ""),
-			{Kind: EntryAction, Title: "Attach in Terminal", Action: Action{Kind: ActionAttach, Stack: id}},
 			{Kind: EntryAction, Title: "Stop Stack", Action: Action{Kind: ActionStop, Stack: id}},
 			{Kind: EntrySeparator},
 			{Kind: EntryHeader, Title: "Restart service"},
@@ -99,8 +98,7 @@ func TestBuildStack(t *testing.T) {
 		Entry{Kind: EntryAction, Title: "Admin", Indent: 2, Action: Action{Kind: ActionOpenURL, URL: "http://127.0.0.1:3000/admin"}},
 		Entry{Kind: EntryAction, Title: "db", Detail: ":5432 :5433", Indent: 1, Action: Action{Kind: ActionOpenURL, URL: "http://127.0.0.1:5432"}},
 		alt(blue, "db"),
-		Entry{Kind: EntryAction, Title: "api", Detail: "exited (3)", Tone: ToneBad, Indent: 1, Action: Action{Kind: ActionAttach, Stack: blue, Service: "api"}},
-		alt(blue, "api"),
+		Entry{Kind: EntryAction, Title: "api", Detail: "exited (3)", Tone: ToneBad, Indent: 1, Action: Action{Kind: ActionRestart, Stack: blue, Service: "api"}},
 		Entry{Kind: EntryNote, Title: "also running: queue, mail", Tone: ToneDim, Indent: 1},
 		Entry{Kind: EntrySeparator},
 		Entry{Kind: EntrySubmenu, Title: "shop · green", Detail: "1 failed", Tone: ToneBad, Bold: true},
@@ -140,15 +138,4 @@ func TestBuildHealthyStackSummary(t *testing.T) {
 func withPorts(sv app.ServiceView, ports map[string]int) app.ServiceView {
 	sv.Service.Ports = ports
 	return sv
-}
-
-func TestRestartTargetsSkipIdle(t *testing.T) {
-	v := view("blue", domain.StackUp, true,
-		svc("api", app.StateRunning, 0),
-		svc("crash", app.StateExited, 2),
-		svc("worker", app.StateIdle, 0),
-	)
-	if got := RestartTargets(v); len(got) != 2 || got[0] != "api" || got[1] != "crash" {
-		t.Fatalf("RestartTargets = %v, want [api crash]", got)
-	}
 }

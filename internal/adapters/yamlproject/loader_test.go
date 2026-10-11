@@ -350,3 +350,26 @@ func sameFile(a, b string) bool {
 	bi, err := os.Stat(b)
 	return err == nil && os.SameFile(ai, bi)
 }
+
+func TestRetriesDefaultFromSettings(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "svx.yaml"), `
+settings:
+  retries: 2
+services:
+  web:
+    run: x
+  api:
+    run: x
+    retries: 0
+`)
+	proj, err := Repository{}.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	web, _ := proj.Def.Service("web")
+	api, _ := proj.Def.Service("api")
+	if web.Retries != 2 || api.Retries != 0 {
+		t.Fatalf("retries: web = %d, api = %d, want 2 and 0", web.Retries, api.Retries)
+	}
+}

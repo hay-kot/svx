@@ -124,6 +124,7 @@ func (r *renderer) service(sd ServiceDef, base map[string]any, funcs template.Fu
 		Depends:   sd.Depends,
 		Oneshot:   sd.Oneshot,
 		Autostart: sd.Autostart,
+		Retries:   sd.Retries,
 		Stop:      sd.Stop,
 		Run:       r.exec(key+".run", sd.Run, data, funcs),
 	}

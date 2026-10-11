@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"text/template"
 
 	"github.com/urfave/cli/v3"
 
@@ -65,17 +64,6 @@ func (cmd *BarCmd) run(ctx context.Context, _ *cli.Command) error {
 		return menubar.ErrUnsupported
 	}
 
-	// Checked before --install too, or the login item would fail at every
-	// launch.
-	var attachURI *template.Template
-	if text := cmd.deps.Config.MenuBar.AttachURI; text != "" {
-		t, err := menubar.ParseAttachURI(text)
-		if err != nil {
-			return err
-		}
-		attachURI = t
-	}
-
 	if cmd.install {
 		logPath := filepath.Join(cmd.deps.App.Store.Dir(), "menubar.log")
 		plist := menubar.Plist(cmd.deps.App.Executable, logPath, menubar.AgentEnv(os.Getenv))
@@ -87,11 +75,6 @@ func (cmd *BarCmd) run(ctx context.Context, _ *cli.Command) error {
 		return nil
 	}
 
-	bar := &menubar.Bar{
-		App:        cmd.deps.App,
-		Executable: cmd.deps.App.Executable,
-		Terminal:   cmd.deps.Config.MenuBar.Terminal,
-		AttachURI:  attachURI,
-	}
+	bar := &menubar.Bar{App: cmd.deps.App}
 	return bar.Run(ctx)
 }

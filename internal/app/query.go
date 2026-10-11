@@ -2,10 +2,8 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
-	"slices"
 	"strings"
 
 	"github.com/hay-kot/svx/internal/domain"
@@ -30,38 +28,6 @@ func (a *App) Env(_ context.Context, t Target, service string) (map[string]strin
 		return nil, usage(fmt.Errorf("unknown service %q, known services: %s", service, strings.Join(stack.ServiceNames(), ", ")))
 	}
 	return maps.Clone(svc.Env), nil
-}
-
-// Links lists a stack's links in service order.
-func (a *App) Links(_ context.Context, t Target) ([]domain.Link, error) {
-	r, err := a.resolve(t, false)
-	if err != nil {
-		return nil, err
-	}
-	stack, err := a.loadStack(r.id)
-	if err != nil {
-		return nil, err
-	}
-	return stack.Links(), nil
-}
-
-// Open opens a link by label, matched without case.
-func (a *App) Open(ctx context.Context, t Target, label string) (domain.Link, error) {
-	links, err := a.Links(ctx, t)
-	if err != nil {
-		return domain.Link{}, err
-	}
-	labels := make([]string, 0, len(links))
-	for _, l := range links {
-		if strings.EqualFold(l.Label, label) {
-			return l, a.Browser.Open(ctx, l.URL)
-		}
-		labels = append(labels, l.Label)
-	}
-	if len(labels) == 0 {
-		return domain.Link{}, usage(errors.New("this stack has no links, add `links` to a service"))
-	}
-	return domain.Link{}, usage(fmt.Errorf("no link %q, links: %s", label, strings.Join(labels, ", ")))
 }
 
 // Preview renders the stack without starting anything. A running stack
@@ -99,37 +65,6 @@ func (a *App) Preview(ctx context.Context, t Target) (domain.Stack, []string, er
 		stack.Status = domain.StackDown
 	}
 	return stack, warnings, nil
-}
-
-// Attach attaches to a stack's session.
-func (a *App) Attach(ctx context.Context, t Target, service string) error {
-	r, err := a.resolve(t, false)
-	if err != nil {
-		return err
-	}
-	stack, err := a.loadStack(r.id)
-	if err != nil {
-		return err
-	}
-	windows, alive, err := a.stackWindows(ctx, &stack)
-	if err != nil {
-		return err
-	}
-	if !alive {
-		return usage(fmt.Errorf("stack %s is not running, start it with `svx up`", stack.ID))
-	}
-	window := ""
-	if service != "" {
-		if _, ok := stack.Service(service); !ok {
-			return usage(fmt.Errorf("unknown service %q, known services: %s", service, strings.Join(stack.ServiceNames(), ", ")))
-		}
-		i := slices.IndexFunc(windows, func(w Window) bool { return w.Name == service })
-		if i < 0 {
-			return usage(fmt.Errorf("%s has no window, start it with `svx up %s`", service, service))
-		}
-		window = windows[i].ID
-	}
-	return a.Mux.Attach(ctx, stack.Session, window)
 }
 
 // ServiceLog says where to read a service's output: File when logs are on,

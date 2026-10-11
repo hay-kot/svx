@@ -22,6 +22,7 @@ type fileSettings struct {
 	MaxSlots   *int  `yaml:"max_slots"`
 	Logs       *bool `yaml:"logs"`
 	MenuBar    *bool `yaml:"menubar"`
+	Retries    *int  `yaml:"retries"`
 }
 
 type fileService struct {
@@ -35,6 +36,7 @@ type fileService struct {
 	Oneshot     bool                 `yaml:"oneshot"`
 	Links       map[string]string    `yaml:"links"`
 	Autostart   *bool                `yaml:"autostart"`
+	Retries     *int                 `yaml:"retries"`
 	StopSignal  string               `yaml:"stop_signal"`
 	StopTimeout string               `yaml:"stop_timeout"`
 }

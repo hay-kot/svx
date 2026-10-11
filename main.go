@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -174,12 +175,10 @@ func run() int {
 	root = commands.NewDownCmd(flags, deps).Register(root)
 	root = status.Register(root)
 	root = commands.NewLsCmd(flags, deps).Register(root)
-	root = commands.NewAttachCmd(flags, deps).Register(root)
 	root = commands.NewRestartCmd(flags, deps).Register(root)
 	root = commands.NewLogsCmd(flags, deps).Register(root)
 	root = commands.NewEnvCmd(flags, deps).Register(root)
 	root = commands.NewExecCmd(flags, deps).Register(root)
-	root = commands.NewOpenCmd(flags, deps).Register(root)
 	root = commands.NewConfigCmd(flags, deps).Register(root)
 	root = commands.NewBarCmd(flags, deps).Register(root)
 	root = commands.NewInitCmd(flags, deps).Register(root)
@@ -191,6 +190,9 @@ func run() int {
 	defer stop()
 
 	if err := root.Run(ctx, os.Args); err != nil {
+		if _, ok := errors.AsType[*app.CommandExitError](err); ok {
+			return app.ExitCode(err)
+		}
 		colorRed := "\033[38;2;215;95;107m"
 		colorGray := "\033[38;2;163;163;163m"
 		colorReset := "\033[0m"

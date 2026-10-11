@@ -57,6 +57,7 @@ type Service struct {
 	Ready     ReadySpec
 	Oneshot   bool
 	Autostart bool
+	Retries   int
 	Stop      StopSpec
 	LogFile   string
 }

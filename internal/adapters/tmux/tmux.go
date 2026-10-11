@@ -300,26 +300,6 @@ func (c *Client) Capture(ctx context.Context, window string, lines int) (string,
 	return strings.Join(kept, "\n"), nil
 }
 
-// Attach hands the terminal to tmux. Inside tmux on the same server it
-// switches the client instead, so sessions are never nested.
-func (c *Client) Attach(ctx context.Context, session, window string) error {
-	var args []string
-	if window != "" {
-		args = append(args, "select-window", "-t", window, ";")
-	}
-	if os.Getenv("TMUX") != "" && c.Socket == "" {
-		args = append(args, "switch-client", "-t", sessionTarget(session))
-	} else {
-		args = append(args, "attach-session", "-t", sessionTarget(session))
-	}
-	cmd := exec.CommandContext(ctx, c.bin(), c.args(args...)...) //nolint:gosec // tmux with arguments svx builds itself
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("attaching to %s: %w", session, err)
-	}
-	return nil
-}
-
 // PaneReady reports whether StartWindow has finished setting up the pane's
 // window, given as a pane id such as %3.
 func (c *Client) PaneReady(ctx context.Context, pane string) (bool, error) {

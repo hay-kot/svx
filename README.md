@@ -18,7 +18,7 @@ Needs tmux 3.2 or newer. `svx doctor` checks. The macOS menu bar needs a build w
 svx init        # writes svx.yaml and adds .svx/ to .gitignore (--stealth: .git/info/exclude)
 svx up          # starts every autostart service in dependency order
 svx             # same as svx status
-svx attach web  # jump into a service's window
+svx logs web    # read a service's output
 svx down
 ```
 
@@ -46,6 +46,7 @@ settings:
   max_slots: 50
   logs: false # true also writes each window to .svx/<stack>/logs/<service>.log
   menubar: true # false hides this project's stacks from the menu bar
+  retries: 0 # default for services: reruns after a non-zero exit
 
 vars:
   db_name: "shop_{{ snake .stack.name }}"
@@ -73,6 +74,7 @@ services:
     links: { API: /, Docs: /docs }
     stop_signal: SIGINT
     stop_timeout: 5s
+    retries: 3 # rerun up to 3 times if it crashes
 
   web:
     run: "npm run dev -- --port {{ .port }} --strictPort"
@@ -90,7 +92,9 @@ services:
     autostart: false # only starts when named: svx up worker
 ```
 
-Service keys: `run` (required), `dir`, `port` (number or `auto`), `ports`, `env`, `depends`, `ready` (one of `http`, `cmd`, `output`, `delay`, plus `timeout`), `oneshot`, `links`, `autostart`, `stop_signal`, `stop_timeout`. Unknown keys are errors.
+Service keys: `run` (required), `dir`, `port` (number or `auto`), `ports`, `env`, `depends`, `ready` (one of `http`, `cmd`, `output`, `delay`, plus `timeout`), `oneshot`, `links`, `autostart`, `retries`, `stop_signal`, `stop_timeout`. Unknown keys are errors.
+
+`retries` reruns a command in its window after a non-zero exit, one second apart, and the window prints each retry. It covers crashes after `svx up` returns too. An exit that follows `svx down` or `svx restart` is never retried. A oneshot retries until it succeeds or runs out.
 
 Without `ready`, a service with a `port` is ready when the port accepts a TCP connection, and one without is ready after staying up for a second.
 
@@ -123,8 +127,6 @@ Run `svx config` to see everything rendered for your stack without starting anyt
 log_level: info
 menubar:
   enabled: true # false: `svx bar` exits at once, so the menu bar stays off
-  terminal: Terminal # the app "Attach in Terminal" opens, e.g. iTerm
-  # attach_uri: 'myterm://run?cmd={{ urlquery .command }}'
 projects: # svx.yaml files for repos that have none of their own
   shop: ~/dotfiles/svx/shop.yaml # checkout directory name
   ~/code/api: ~/dotfiles/svx/api.yaml # full path
@@ -134,26 +136,22 @@ projects: # svx.yaml files for repos that have none of their own
 
 `projects` applies only when no `svx.yaml` is found walking up. svx looks up the checkout root (the nearest directory with `.git`, else the current directory) in this order: full path, directory name, then globs, where the longest matching glob wins. The checkout root becomes the project root, so service `dir`s, `svx.local.yaml` and `.svx/` resolve against the repo as usual. Exclude `.svx/` in `.git/info/exclude` to keep it out of `git status`.
 
-`attach_uri` replaces `terminal` when set: "Attach in Terminal" renders it and hands the result to `open`, so any URI scheme or handler app works. The template sees `.project`, `.stack`, `.service` (empty for the whole stack), `.session`, `.command` (the quoted `svx attach` command line) and `.script` (an executable that runs `.command` with svx's environment, safer when the terminal starts a fresh shell). `urlquery` and `pathescape` encode values. `svx bar` checks the template when it starts.
-
 ## Commands
 
-| Command                    | What it does                                                                                               |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `svx up [service...]`      | Start the stack or the named services plus dependencies. Safe to repeat. `--name`, `--attach`, `--no-wait` |
-| `svx down`                 | Stop the stack. `--all`, `--purge`                                                                         |
-| `svx status`               | Services, state, ports and links. `--json`                                                                 |
-| `svx ls`                   | Every stack on the machine. `--json`                                                                       |
-| `svx attach [service]`     | Attach, or switch client when already in tmux                                                              |
-| `svx restart <service...>` | Restart in place, keeping ports, in dependency order                                                       |
-| `svx logs <service>`       | Print a log, or the window's scrollback when logs are off. `-f` needs `logs: true`. `--raw`, `-n`          |
-| `svx env`                  | Print the stack's variables. `--format shell\|dotenv\|json`, `--service`                                   |
-| `svx exec -- <cmd>`        | Run a command with the stack's environment                                                                 |
-| `svx open [link]`          | Open a link, or list them                                                                                  |
-| `svx config`               | Print the rendered config                                                                                  |
-| `svx bar`                  | Run the menu bar. `--install` starts it now and at login, `--uninstall` removes that                       |
-| `svx init`                 | Write a starter `svx.yaml`. `--stealth` ignores svx's files in `.git/info/exclude`, `svx.yaml` included    |
-| `svx doctor`               | Check tmux, state, stale stacks and the menu bar                                                           |
+| Command                    | What it does                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `svx up [service...]`      | Start the stack or the named services plus dependencies. Safe to repeat. `--name`, `--no-wait`          |
+| `svx down`                 | Stop the stack. `--all`, `--purge`                                                                      |
+| `svx status`               | Services, state, ports and links. `--json`                                                              |
+| `svx ls`                   | Every stack on the machine. `--json`                                                                    |
+| `svx restart [service...]` | Restart in place, keeping ports, in dependency order. `--all` restarts every started service            |
+| `svx logs <service>`       | Print a log, or the window's scrollback when logs are off. `-f` needs `logs: true`. `--raw`, `-n`       |
+| `svx env`                  | Print the stack's variables. `--format shell\|dotenv\|json`, `--service`                                |
+| `svx exec -- <cmd>`        | Run a command with the stack's environment                                                              |
+| `svx config`               | Print the rendered config                                                                               |
+| `svx bar`                  | Run the menu bar. `--install` starts it now and at login, `--uninstall` removes that                    |
+| `svx init`                 | Write a starter `svx.yaml`. `--stealth` ignores svx's files in `.git/info/exclude`, `svx.yaml` included |
+| `svx doctor`               | Check tmux, state, stale stacks and the menu bar                                                        |
 
 Commands act on the current checkout's stack. `--name` (or `SVX_STACK`) picks another stack name, which is how one checkout runs two stacks. `--project` with `--name` targets a stack without reading any config.
 
@@ -175,7 +173,7 @@ svx bar --install   # run it now and at every login, as a launchd agent
 svx bar --uninstall
 ```
 
-The icon shows how many stacks are running. Each stack is a bold row with a health dot and a summary (`5 running`, `1 failed`); hover it for Restart All Services, Attach in Terminal, Stop Stack and a restart for each service. Under it, each running service with a URL shows its port and opens on click. Hold ⌥ and the same rows read "Restart <service>". Failed services show in red and open their window in Terminal. Running services with nothing to open share one "also running" line, and finished oneshots and idle services stay out of the list. Restarts follow dependency order. The menu re-reads state every two seconds and whenever it opens.
+The icon shows how many stacks are running. Each stack is a bold row with a health dot and a summary (`5 running`, `1 failed`); hover it for Restart All Services, Stop Stack and a restart for each service. Under it, each running service with a URL shows its port and opens on click. Hold ⌥ and the same rows read "Restart <service>". Failed services show in red and restart on click. Running services with nothing to open share one "also running" line, and finished oneshots and idle services stay out of the list. Restarts follow dependency order. The menu re-reads state every two seconds and whenever it opens.
 
 To opt out, set `menubar.enabled: false` in the user config, or `settings.menubar: false` in a project to hide just that project. The login item copies your `PATH` at install time, since launchd starts agents without your shell profile; run `svx bar --install` again after moving tmux or svx.
 
@@ -186,7 +184,7 @@ To opt out, set `menubar.enabled: false` in the user config, or `settings.menuba
 - `stacks/<project>--<stack>.json` -- the public record other tools can read. Its shape is versioned.
 - `stacks/<project>--<stack>.env.json` -- rendered commands and the environment snapshot, mode 0600.
 - `lock` -- taken while allocating slots.
-- `menubar.lock`, `menubar.log` and `menubar/` -- the menu bar's single-instance lock, its log when run by launchd, and its attach scripts.
+- `menubar.lock` and `menubar.log` -- the menu bar's single-instance lock and its log when run by launchd.
 
 tmux is the source of truth for what is running. A stack is running while its session holds at least one of its tagged windows. Records that tmux contradicts are marked down whenever svx reads them.
 

@@ -21,6 +21,7 @@ settings:
   # max_slots: 50
   # logs: true              # also write each window to .svx/<stack>/logs/<service>.log
   # menubar: true           # list this project's stacks in the menu bar
+  # retries: 0              # rerun a service this many times after a crash
 
 # vars:
 #   db_name: 'myapp_{{ snake .stack.name }}'

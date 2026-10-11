@@ -15,15 +15,21 @@ import (
 type RestartRequest struct {
 	Target   Target
 	Services []string
-	NoWait   bool
+	// All restarts every started service in place of Services. A service
+	// that does not autostart and was never started stays idle.
+	All    bool
+	NoWait bool
 }
 
 // Restart stops and respawns services in their windows, keeping their ports.
 // When the project config is reachable it is re-rendered against the
 // recorded slot, so config edits apply without moving any port.
 func (a *App) Restart(ctx context.Context, req RestartRequest) (UpResult, error) {
-	if len(req.Services) == 0 {
-		return UpResult{}, usage(errors.New("name at least one service to restart"))
+	switch {
+	case req.All && len(req.Services) > 0:
+		return UpResult{}, usage(errors.New("name services or pass --all, not both"))
+	case !req.All && len(req.Services) == 0:
+		return UpResult{}, usage(errors.New("name at least one service to restart, or pass --all"))
 	}
 
 	r, err := a.resolve(req.Target, false)
@@ -49,6 +55,12 @@ func (a *App) Restart(ctx context.Context, req RestartRequest) (UpResult, error)
 		}
 	}
 
+	if req.All {
+		req.Services, err = a.startedServices(ctx, stack)
+		if err != nil {
+			return UpResult{}, err
+		}
+	}
 	for _, name := range req.Services {
 		if _, ok := stack.Service(name); !ok {
 			return UpResult{}, usage(fmt.Errorf("unknown service %q, known services: %s", name, strings.Join(stack.ServiceNames(), ", ")))
@@ -147,4 +159,21 @@ func (a *App) rerender(ctx context.Context, r resolved, prev domain.Stack) (doma
 		return domain.Stack{}, err
 	}
 	return stack, nil
+}
+
+// startedServices lists the services that have a window or autostart, in
+// stack order.
+func (a *App) startedServices(ctx context.Context, stack domain.Stack) ([]string, error) {
+	windows, err := a.Mux.Windows(ctx, stack.Session, stack.ID.Key())
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, svc := range stack.Services {
+		hasWindow := slices.ContainsFunc(windows, func(w Window) bool { return w.Name == svc.Name })
+		if hasWindow || svc.Autostart {
+			names = append(names, svc.Name)
+		}
+	}
+	return names, nil
 }

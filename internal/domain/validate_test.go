@@ -32,6 +32,7 @@ func TestValidateErrors(t *testing.T) {
 			d.Services[1].Depends = []string{redisSvc}
 		}, "dependency cycle"},
 		{"oneshot with ready", func(d *Definition) { d.Services[1].Oneshot = true }, "oneshot"},
+		{"negative retries", func(d *Definition) { d.Services[0].Retries = -1 }, "retries: must be 0 or more"},
 		{"bad signal", func(d *Definition) { d.Services[0].Stop.Signal = "SIGNOPE" }, "unknown signal"},
 	}
 	for _, tt := range tests {

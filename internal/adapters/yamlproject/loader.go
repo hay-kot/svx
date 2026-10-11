@@ -286,6 +286,7 @@ func toDefinition(source string, fc fileConfig, root *yaml.Node) (domain.Definit
 			Depends:   fs.Depends,
 			Oneshot:   fs.Oneshot,
 			Autostart: valueOr(fs.Autostart, true),
+			Retries:   valueOr(fs.Retries, valueOr(fc.Settings.Retries, 0)),
 			Ports:     map[string]domain.PortSpec{},
 			Ready:     domain.ReadySpec{Kind: domain.ReadyDefault, Value: "", Timeout: domain.DefaultReadyTimeout},
 			Stop:      domain.StopSpec{Signal: domain.DefaultStopSignal, Timeout: domain.DefaultStopTimeout},

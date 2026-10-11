@@ -254,3 +254,32 @@ func TestConfigRendersWithoutStarting(t *testing.T) {
 		t.Fatalf("config started something:\n%s", windows)
 	}
 }
+
+// A service that crashes before it is ready comes back through retries, and
+// up still succeeds.
+func TestRetriesRecoverACrash(t *testing.T) {
+	h := NewHarness(t)
+	dir := t.TempDir()
+	config := `
+project: retries
+services:
+  app:
+    run: 'if [ ! -e first-run ]; then touch first-run; exit 7; fi; echo up on $PORT; sleep 300'
+    port: 29100
+    retries: 1
+    ready: { output: 'up on \d+', timeout: 10s }
+`
+	if err := os.WriteFile(filepath.Join(dir, "svx.yaml"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := h.Run(dir, "up"); err != nil {
+		t.Fatalf("up: %v\n%s", err, out)
+	}
+	out, _ := h.Stdout(dir, "logs", "app")
+	if !strings.Contains(out, "exited with code 7, retry 1 of 1") {
+		t.Fatalf("logs:\n%s", out)
+	}
+	if out, err := h.Run(dir, "down"); err != nil {
+		t.Fatalf("down: %v\n%s", err, out)
+	}
+}
