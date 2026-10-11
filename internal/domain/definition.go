@@ -43,6 +43,9 @@ type Settings struct {
 	Logs       bool
 	// MenuBar lets a project hide its stacks from the menu bar.
 	MenuBar bool
+	// WindowName is a template rendered per service for its tmux window
+	// name. Empty names each window after its service.
+	WindowName string
 }
 
 // ServiceDef is one entry under `services`.

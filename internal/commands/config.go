@@ -39,6 +39,7 @@ func (cmd *ConfigCmd) Register(app *cli.Command) *cli.Command {
 type configService struct {
 	Run     string            `json:"run"               yaml:"run"`
 	Dir     string            `json:"dir"               yaml:"dir"`
+	Window  string            `json:"window"            yaml:"window"`
 	Ports   map[string]int    `json:"ports,omitempty"   yaml:"ports,omitempty"`
 	URL     string            `json:"url,omitempty"     yaml:"url,omitempty"`
 	Depends []string          `json:"depends,omitempty" yaml:"depends,omitempty"`
@@ -68,6 +69,7 @@ func (cmd *ConfigCmd) run(ctx context.Context, _ *cli.Command) error {
 		cs := configService{
 			Run:     svc.Run,
 			Dir:     svc.Dir,
+			Window:  svc.Window,
 			Ports:   svc.Ports,
 			URL:     svc.URL,
 			Depends: svc.Depends,

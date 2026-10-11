@@ -70,6 +70,9 @@ type WindowSpec struct {
 	// a session that may hold the user's own windows too.
 	Stack   string
 	Service string
+	// Name is the tmux window name StartWindow gives a new window. Empty
+	// uses Service. It is display only.
+	Name string
 	// Window is the id of the window to respawn.
 	Window string
 	Dir    string

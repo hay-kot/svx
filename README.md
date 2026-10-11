@@ -47,6 +47,7 @@ settings:
   logs: false # true also writes each window to .svx/<stack>/logs/<service>.log
   menubar: true # false hides this project's stacks from the menu bar
   retries: 0 # default for services: reruns after a non-zero exit
+  window_name: "shop.{{ .service.name }}" # tmux window name, defaults to the service name
 
 vars:
   db_name: "shop_{{ snake .stack.name }}"
@@ -100,7 +101,7 @@ Without `ready`, a service with a `port` is ready when the port accepts a TCP co
 
 ### Templates
 
-`run`, `dir`, `env` values, `vars`, `links` and `ready` values are Go templates with `missingkey=error`, so a typo fails `svx up` instead of rendering empty.
+`run`, `dir`, `env` values, `vars`, `links`, `ready` values and `settings.window_name` are Go templates with `missingkey=error`, so a typo fails `svx up` instead of rendering empty.
 
 | Expression                                                   | Value                                                                      |
 | ------------------------------------------------------------ | -------------------------------------------------------------------------- |
@@ -161,7 +162,9 @@ Exit codes: 0 success, 1 a service failed or timed out, 2 a config or usage erro
 
 `svx up` adds the stack's windows to your current session, in the background, so your current window keeps focus. It refuses to run outside tmux: svx never creates sessions. A running stack stays in the session it started in, whichever session a later command runs from. Other commands, such as `down`, `restart` and the menu bar, work from anywhere.
 
-svx finds its windows by the `@svx_stack` and `@svx_service` window options, not by name, so your own windows are never touched. `svx down` closes only the stack's windows and never kills a session.
+svx finds its windows by the `@svx_stack` and `@svx_service` window options, not by name, so your own windows are never touched.
+
+Each window is named after its service. Set `settings.window_name` to change that: it renders once per service with the same template values as `run`, so `"shop.{{ .service.name }}"` gives windows such as `shop.api`. The name is only for display, so `.` and `:` are fine, and `#` shows as typed rather than as a tmux format. A name that renders empty, has control characters, or repeats another service's name is a config error. `svx config` shows each service's `window`. `svx restart` keeps a window's existing name. `svx down` closes only the stack's windows and never kills a session.
 
 ## Menu bar
 
@@ -221,6 +224,7 @@ Tests never touch your tmux server or state: they use `tmux -L svx-test-<random>
 - `svx up` must run inside tmux and adds windows to the current session instead of creating one session per stack. Windows are found by tag, and `down` closes windows rather than killing a session.
 - The menu bar is a native Cocoa status item run by `svx bar` (a launchd agent once installed), not SwiftBar. It is a long-running process, which the spec listed as a later option.
 - The menu bar is opt-out in the user config, and per project with `settings.menubar`.
+- Windows are named after their service by default, and `settings.window_name` can rename them. The name is display only.
 - The package layout follows ports and adapters rather than the spec's package table. The responsibilities match.
 - `svx up --no-wait` still starts windows in dependency order, but does not wait for readiness between them.
 - A oneshot that already exited 0 counts as done on a repeat `up` and is not rerun. Use `svx restart <name>` to rerun it.

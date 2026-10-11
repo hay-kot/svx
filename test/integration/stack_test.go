@@ -283,3 +283,70 @@ services:
 		t.Fatalf("down: %v\n%s", err, out)
 	}
 }
+
+// A window name template only changes what tmux shows. status, logs,
+// restart and down still find each window by its tags.
+func TestWindowNameTemplate(t *testing.T) {
+	h := NewHarness(t)
+	dir := t.TempDir()
+	config := `
+project: rcp
+settings:
+  window_name: 'rcp.{{ .service.name }}'
+services:
+  api:
+    run: 'echo "api up"; sleep 300'
+  ui:
+    run: 'echo "ui up"; sleep 300'
+    depends: [api]
+`
+	if err := os.WriteFile(filepath.Join(dir, "svx.yaml"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := h.Stdout(dir, "config")
+	if err != nil {
+		t.Fatalf("config: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "window: rcp.api") || !strings.Contains(out, "window: rcp.ui") {
+		t.Fatalf("config output:\n%s", out)
+	}
+
+	if out, err := h.Run(dir, "up"); err != nil {
+		t.Fatalf("up: %v\n%s", err, out)
+	}
+	names := func() string {
+		out, err := h.Tmux("list-windows", "-a", "-F", "#{@svx_service}=#{window_name}")
+		if err != nil {
+			t.Fatalf("list-windows: %v\n%s", err, out)
+		}
+		return out
+	}
+	for _, want := range []string{"api=rcp.api", "ui=rcp.ui"} {
+		if got := names(); !strings.Contains(got, want) {
+			t.Fatalf("windows missing %s:\n%s", want, got)
+		}
+	}
+
+	s := status(t, h, dir)
+	if s.state("api") != "running" || s.state("ui") != "running" {
+		t.Fatalf("status = %+v", s)
+	}
+	if out, err := h.Stdout(dir, "logs", "api"); err != nil || !strings.Contains(out, "api up") {
+		t.Fatalf("logs api: %v\n%s", err, out)
+	}
+
+	if out, err := h.Run(dir, "restart", "api"); err != nil {
+		t.Fatalf("restart: %v\n%s", err, out)
+	}
+	if got := names(); !strings.Contains(got, "api=rcp.api") {
+		t.Fatalf("restart lost the window name:\n%s", got)
+	}
+
+	if out, err := h.Run(dir, "down"); err != nil {
+		t.Fatalf("down: %v\n%s", err, out)
+	}
+	if got := names(); strings.Contains(got, "rcp.") {
+		t.Fatalf("down left windows:\n%s", got)
+	}
+}

@@ -112,6 +112,10 @@ func TestRenderErrors(t *testing.T) {
 		{"unknown port", func(d *Definition) { d.Services[0].Run = `{{ port "ghost" }}` }, `no such service`},
 		{"unknown named port", func(d *Definition) { d.Services[0].Run = `{{ port "web" "nope" }}` }, `no port named "nope"`},
 		{"missing env", func(d *Definition) { d.Services[0].Run = `{{ env "NOPE" }}` }, `not set in the environment`},
+		{"window name missing key", func(d *Definition) { d.Settings.WindowName = "{{ .nope }}" }, "settings.window_name: service redis:"},
+		{"empty window name", func(d *Definition) { d.Settings.WindowName = "{{ if false }}x{{ end }} " }, "service redis: renders an empty window name"},
+		{"control character in window name", func(d *Definition) { d.Settings.WindowName = `a{{ "\n" }}b` }, "control characters"},
+		{"duplicate window names", func(d *Definition) { d.Settings.WindowName = "rcp" }, `services redis and web both render window name "rcp"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -120,6 +124,33 @@ func TestRenderErrors(t *testing.T) {
 			_, err := renderSample(t, def, 0)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("err = %v, want mention of %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestRenderWindowName(t *testing.T) {
+	tests := []struct {
+		name     string
+		template string
+		want     map[string]string
+	}{
+		{"default is the service name", "", map[string]string{redisSvc: redisSvc, "web": "web"}},
+		{"prefix", "rcp.{{ .service.name }}", map[string]string{redisSvc: "rcp.redis", "web": "rcp.web"}},
+		{"stack context", "{{ .stack.name }}:{{ .service.name }}:{{ .port }}", map[string]string{redisSvc: "amber-finch:redis:6379", "web": "amber-finch:web:5173"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			def := sampleDef()
+			def.Settings.WindowName = tt.template
+			stack, err := renderSample(t, def, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for svc, want := range tt.want {
+				if s, _ := stack.Service(svc); s.Window != want {
+					t.Errorf("%s window = %q, want %q", svc, s.Window, want)
+				}
 			}
 		})
 	}

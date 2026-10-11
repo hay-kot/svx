@@ -258,6 +258,60 @@ func TestRespawnKeepsWindowAndLogging(t *testing.T) {
 	}
 }
 
+// The window name is display only and taken literally: "." and ":" stay
+// because windows are targeted by id, "#" does not expand as a format, and
+// the stack still finds the window by its service tag, through a respawn.
+func TestWindowNameIsLiteralAndDisplayOnly(t *testing.T) {
+	c := newTestClient(t)
+	userSession(t, c, "s8")
+	spec := app.WindowSpec{
+		Session: "s8", Stack: testStack, Service: "api", Name: "rcp.api:#{session_name}",
+		Command: gated(c, "sleep 30"),
+	}
+	id, err := c.StartWindow(t.Context(), spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	windowName := func() string {
+		out, err := c.run(t.Context(), "display-message", "-p", "-t", id, "#{window_name}")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(out)
+	}
+	if got := windowName(); got != spec.Name {
+		t.Fatalf("window name = %q, want %q", got, spec.Name)
+	}
+	if w, ok := findWindow(t, c, "s8", "api"); !ok || w.ID != id {
+		t.Fatalf("api window by tag = %+v, %v; want %s", w, ok, id)
+	}
+
+	spec.Window = id
+	if err := c.RespawnWindow(t.Context(), spec); err != nil {
+		t.Fatal(err)
+	}
+	if got := windowName(); got != spec.Name {
+		t.Fatalf("window name after respawn = %q, want %q", got, spec.Name)
+	}
+	if _, err := c.run(t.Context(), "select-window", "-t", id); err != nil {
+		t.Fatalf("select-window by id: %v", err)
+	}
+}
+
+// Without a name, the window is named after its service.
+func TestWindowNameDefaultsToService(t *testing.T) {
+	c := newTestClient(t)
+	userSession(t, c, "s9")
+	id := startWindow(t, c, "s9", "web", "sleep", "300")
+	out, err := c.run(t.Context(), "display-message", "-p", "-t", id, "#{window_name}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(out); got != "web" {
+		t.Fatalf("window name = %q, want web", got)
+	}
+}
+
 // Run from a pane on the same server, svx adds its windows to that pane's
 // session in the background and leaves the user's own windows as they
 // were: no pipe, no remain-on-exit, no tags, and still the active window.

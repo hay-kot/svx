@@ -280,6 +280,7 @@ func (a *App) windowSpec(stack domain.Stack, svc domain.Service) WindowSpec {
 		Session: stack.Session,
 		Stack:   stack.ID.Key(),
 		Service: svc.Name,
+		Name:    svc.Window,
 		Window:  "",
 		Dir:     svc.Dir,
 		Command: []string{a.Executable, "_run", stack.ID.Key(), svc.Name},

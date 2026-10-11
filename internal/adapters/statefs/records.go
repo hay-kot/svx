@@ -65,6 +65,7 @@ type runtimeService struct {
 	StopSignal   string            `json:"stop_signal"`
 	StopTimeout  time.Duration     `json:"stop_timeout"`
 	LogFile      string            `json:"log_file"`
+	Window       string            `json:"window"`
 }
 
 var (
@@ -120,6 +121,7 @@ func toRuntime(s domain.Stack) runtime {
 			StopSignal:   svc.Stop.Signal,
 			StopTimeout:  svc.Stop.Timeout,
 			LogFile:      svc.LogFile,
+			Window:       svc.Window,
 		}
 	}
 	return rt
@@ -136,7 +138,7 @@ func fromFiles(r record, rt *runtime) domain.Stack {
 		Session:   r.Session,
 		Status:    domain.StackStatus(r.Status),
 		StartedAt: r.StartedAt,
-		Settings:  domain.Settings{PortStride: 0, MaxSlots: 0, Logs: false, MenuBar: r.MenuBar},
+		Settings:  domain.Settings{PortStride: 0, MaxSlots: 0, Logs: false, MenuBar: r.MenuBar, WindowName: ""},
 		Services:  nil,
 		Env:       nil,
 		Snapshot:  nil,
@@ -168,7 +170,7 @@ func fromFiles(r record, rt *runtime) domain.Stack {
 			rs := rt.Services[name]
 			svc.Run, svc.Dir, svc.Env, svc.Depends = rs.Run, rs.Dir, rs.Env, rs.Depends
 			svc.Ready = domain.ReadySpec{Kind: domain.ReadyKind(rs.ReadyKind), Value: rs.ReadyValue, Timeout: rs.ReadyTimeout}
-			svc.Oneshot, svc.Autostart, svc.Retries, svc.LogFile = rs.Oneshot, rs.Autostart, rs.Retries, rs.LogFile
+			svc.Oneshot, svc.Autostart, svc.Retries, svc.LogFile, svc.Window = rs.Oneshot, rs.Autostart, rs.Retries, rs.LogFile, rs.Window
 			svc.Stop = domain.StopSpec{Signal: rs.StopSignal, Timeout: rs.StopTimeout}
 		}
 		s.Services = append(s.Services, svc)

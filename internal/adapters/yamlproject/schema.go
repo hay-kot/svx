@@ -18,11 +18,12 @@ type fileConfig struct {
 }
 
 type fileSettings struct {
-	PortStride *int  `yaml:"port_stride"`
-	MaxSlots   *int  `yaml:"max_slots"`
-	Logs       *bool `yaml:"logs"`
-	MenuBar    *bool `yaml:"menubar"`
-	Retries    *int  `yaml:"retries"`
+	PortStride *int   `yaml:"port_stride"`
+	MaxSlots   *int   `yaml:"max_slots"`
+	Logs       *bool  `yaml:"logs"`
+	MenuBar    *bool  `yaml:"menubar"`
+	Retries    *int   `yaml:"retries"`
+	WindowName string `yaml:"window_name"`
 }
 
 type fileService struct {
