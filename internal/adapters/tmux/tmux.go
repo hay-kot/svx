@@ -152,6 +152,20 @@ func (c *Client) CurrentSession(ctx context.Context) (string, bool, error) {
 	return session, true, nil
 }
 
+// HasSession reports whether session exists. A missing server means it
+// does not.
+func (c *Client) HasSession(ctx context.Context, session string) (bool, error) {
+	_, err := c.run(ctx, "has-session", "-t", sessionTarget(session))
+	switch {
+	case err == nil:
+		return true, nil
+	case gone(err):
+		return false, nil
+	default:
+		return false, err
+	}
+}
+
 // StartWindow creates a detached window in an existing session, then tags
 // and configures it. remain-on-exit is set per window
 // because a session-level setting does not reach windows created later.

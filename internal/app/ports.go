@@ -91,6 +91,8 @@ type Multiplexer interface {
 	// CurrentSession returns the session svx was run from, when it runs
 	// in a pane on the same tmux server.
 	CurrentSession(ctx context.Context) (string, bool, error)
+	// HasSession reports whether a session with exactly this name exists.
+	HasSession(ctx context.Context, session string) (bool, error)
 	// StartWindow creates a tagged window, detached, and returns its id.
 	StartWindow(ctx context.Context, spec WindowSpec) (string, error)
 	RespawnWindow(ctx context.Context, spec WindowSpec) error

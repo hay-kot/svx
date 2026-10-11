@@ -13,10 +13,11 @@ import (
 
 // UpCmd implements the up command.
 type UpCmd struct {
-	flags  *Flags
-	deps   *Deps
-	stack  stackFlags
-	noWait bool
+	flags   *Flags
+	deps    *Deps
+	stack   stackFlags
+	noWait  bool
+	session string
 }
 
 // NewUpCmd creates a new up command.
@@ -32,6 +33,7 @@ func (cmd *UpCmd) Register(app *cli.Command) *cli.Command {
 		ArgsUsage: "[service...]",
 		Flags: append(cmd.stack.flags(),
 			&cli.BoolFlag{Name: "no-wait", Usage: "start windows in dependency order without waiting for readiness", Destination: &cmd.noWait},
+			&cli.StringFlag{Name: "session", Usage: "start in this existing tmux session instead of the current one, so up can run outside tmux", Destination: &cmd.session},
 		),
 		Action: cmd.run,
 	})
@@ -43,7 +45,7 @@ func (cmd *UpCmd) run(ctx context.Context, c *cli.Command) error {
 	a, finish := withProgress(cmd.deps.App, os.Stderr, cmd.flags.NoColor)
 	defer finish()
 
-	result, err := a.Up(ctx, app.UpRequest{Target: cmd.stack.target(), Services: c.Args().Slice(), NoWait: cmd.noWait})
+	result, err := a.Up(ctx, app.UpRequest{Target: cmd.stack.target(), Services: c.Args().Slice(), NoWait: cmd.noWait, Session: cmd.session})
 	finish()
 	if result.Stack.ID.Project == "" {
 		return err
