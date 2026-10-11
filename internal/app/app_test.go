@@ -245,7 +245,7 @@ func TestDownStopsInReverseDependencyOrder(t *testing.T) {
 	if _, err := a.Down(t.Context(), DownRequest{Target: target("one")}); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.signals.names(); !slices.Equal(got, []string{"web", "api", "db"}) {
+	if got := f.procs.names(); !slices.Equal(got, []string{"web", "api", "db"}) {
 		t.Errorf("signal order = %v, want [web api db]", got)
 	}
 	if ws, _ := f.mux.Windows(t.Context(), up.Stack.Session, ident("one").Key()); len(ws) != 0 {
@@ -260,13 +260,15 @@ func TestDownStopsInReverseDependencyOrder(t *testing.T) {
 func TestDownKillsServiceThatIgnoresStopSignal(t *testing.T) {
 	a, f := newTestApp(t, testDef(svc("api", 3000)))
 	mustUp(t, a, UpRequest{Target: target("one")})
-	f.signals.ignore = map[string]bool{"api": true}
+	f.procs.ignore = map[string]bool{"api": true}
 
 	if _, err := a.Down(t.Context(), DownRequest{Target: target("one")}); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.signals.sigs(); !slices.Equal(got, []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL}) {
-		t.Errorf("signals = %v, want [SIGTERM SIGKILL]", got)
+	calls := f.procs.all()
+	first, last := calls[0], calls[len(calls)-1]
+	if first != (signalCall{Name: "api", Sig: syscall.SIGTERM, Group: true}) || last != (signalCall{Name: "api", Sig: syscall.SIGKILL, Group: true}) {
+		t.Errorf("signals = %v, want a group SIGTERM first and a group SIGKILL last", calls)
 	}
 	if ws, _ := f.mux.Windows(t.Context(), "work", ident("one").Key()); len(ws) != 0 {
 		t.Errorf("windows after down = %v", ws)
@@ -332,7 +334,7 @@ func TestRestartKeepsPortsAndRespawns(t *testing.T) {
 	if got := f.mux.startedNames(); len(got) != 0 {
 		t.Errorf("started = %v, want none", got)
 	}
-	if got := f.signals.names(); !slices.Equal(got, []string{"api"}) {
+	if got := f.procs.names(); !slices.Equal(got, []string{"api"}) {
 		t.Errorf("signalled = %v, want [api]", got)
 	}
 }

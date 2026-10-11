@@ -16,7 +16,7 @@ const (
 	DefaultMaxSlots     = 50
 	DefaultReadyTimeout = 60 * time.Second
 	DefaultStopTimeout  = 10 * time.Second
-	DefaultStopSignal   = "SIGTERM"
+	DefaultStopSignal   = "SIGINT"
 
 	// MainPort is the key the primary port is stored under alongside the
 	// named ports. It is reserved, so a service cannot declare a named port
@@ -119,9 +119,9 @@ type StopSpec struct {
 // ParseSignal turns a name such as "SIGINT" or "INT" into a signal.
 func ParseSignal(name string) (syscall.Signal, error) {
 	switch name {
-	case "SIGTERM", "TERM", "":
+	case "SIGTERM", "TERM":
 		return syscall.SIGTERM, nil
-	case "SIGINT", "INT":
+	case "SIGINT", "INT", "":
 		return syscall.SIGINT, nil
 	case "SIGQUIT", "QUIT":
 		return syscall.SIGQUIT, nil

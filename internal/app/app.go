@@ -16,7 +16,7 @@ type App struct {
 	Projects ProjectRepository
 	Store    StateStore
 	Mux      Multiplexer
-	Signals  Signaler
+	Procs    Processes
 	Ports    PortProber
 	Ready    ReadyProber
 	Files    Files
@@ -30,6 +30,9 @@ type App struct {
 	Executable string
 	// Poll is how often readiness and stop waits re-check.
 	Poll time.Duration
+	// KillGrace is how long a process that outlived its stop timeout gets
+	// between SIGTERM and SIGKILL.
+	KillGrace time.Duration
 	// Events receives progress while use cases run. It may be nil.
 	Events func(Event)
 }
@@ -65,6 +68,13 @@ func (a *App) emit(e Event) {
 	if a.Events != nil {
 		a.Events(e)
 	}
+}
+
+func (a *App) killGrace() time.Duration {
+	if a.KillGrace > 0 {
+		return a.KillGrace
+	}
+	return 2 * time.Second
 }
 
 func (a *App) poll() time.Duration {

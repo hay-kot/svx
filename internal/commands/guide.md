@@ -21,7 +21,7 @@ reference is at the end.
 
 - Leave out anything that matches the default. Every `settings` key has one:
   `port_stride: 10`, `max_slots: 50`, `logs: false`, `menubar: true`,
-  `retries: 0`, and `window_name` is the service name. So does `autostart: true`, `stop_signal: SIGTERM` and
+  `retries: 0`, and `window_name` is the service name. So does `autostart: true`, `stop_signal: SIGINT` and
   `stop_timeout: 10s`. A config with no `settings` block is normal.
 - `project` defaults to the main checkout's directory name. Set it only when
   that name is wrong.
@@ -118,6 +118,17 @@ env:
   listen.
 - A service that is useful only sometimes gets `autostart: false`.
   `svx up <service>` starts it.
+
+## Stopping
+
+`svx down` and `svx restart` stop a service the way Ctrl-C does: SIGINT to
+the window's process group. svx then waits up to `stop_timeout` for every
+process the service started to exit, including ones in a process group of
+their own, and sends SIGTERM and then SIGKILL to whatever is left. Set
+`stop_signal` only for a command that does not stop on SIGINT, and raise
+`stop_timeout` for one with a slow teardown. A job that `run` puts in the
+background with `&` ignores SIGINT, so it stops only at the timeout. Prefer
+one foreground command, or a script that traps INT and stops its jobs.
 
 ## Links
 
