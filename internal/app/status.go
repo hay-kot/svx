@@ -47,7 +47,7 @@ func (v StackView) Running() int {
 
 // Status reports one stack.
 func (a *App) Status(ctx context.Context, t Target) (StackView, error) {
-	r, err := a.resolve(t, false)
+	r, err := a.resolve(ctx, t, false)
 	if err != nil {
 		return StackView{}, err
 	}

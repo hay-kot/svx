@@ -11,8 +11,8 @@ import (
 
 // Env returns a stack's variables: the stack-wide overlay, or one service's
 // view of it.
-func (a *App) Env(_ context.Context, t Target, service string) (map[string]string, error) {
-	r, err := a.resolve(t, false)
+func (a *App) Env(ctx context.Context, t Target, service string) (map[string]string, error) {
+	r, err := a.resolve(ctx, t, false)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func (a *App) Env(_ context.Context, t Target, service string) (map[string]strin
 // pick right now, though nothing is reserved, and the session is the one svx
 // runs in, empty outside tmux.
 func (a *App) Preview(ctx context.Context, t Target) (domain.Stack, []string, error) {
-	r, err := a.resolve(t, true)
+	r, err := a.resolve(ctx, t, true)
 	if err != nil {
 		return domain.Stack{}, nil, err
 	}
@@ -76,7 +76,7 @@ type ServiceLog struct {
 
 // ServiceLog finds a service's output.
 func (a *App) ServiceLog(ctx context.Context, t Target, service string) (ServiceLog, error) {
-	r, err := a.resolve(t, false)
+	r, err := a.resolve(ctx, t, false)
 	if err != nil {
 		return ServiceLog{}, err
 	}

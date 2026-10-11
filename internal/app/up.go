@@ -64,7 +64,7 @@ func (a *App) Up(ctx context.Context, req UpRequest) (UpResult, error) {
 		return UpResult{}, err
 	}
 
-	r, err := a.loadValidated(req.Target)
+	r, err := a.loadValidated(ctx, req.Target)
 	if err != nil {
 		return UpResult{}, err
 	}

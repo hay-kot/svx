@@ -6,6 +6,8 @@ package app
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/hay-kot/svx/internal/domain"
@@ -86,7 +88,8 @@ func (a *App) poll() time.Duration {
 
 // Target says which stack a command acts on. With Project and Stack both set,
 // no config is read. Otherwise the project comes from the config found from
-// Dir, and Stack, if empty, from a hash of the checkout path.
+// Dir, and Stack, if empty, from the stacks on record for the checkout: see
+// checkoutStack.
 type Target struct {
 	Dir     string
 	Project string
@@ -98,7 +101,7 @@ type resolved struct {
 	project *Project
 }
 
-func (a *App) resolve(t Target, needProject bool) (resolved, error) {
+func (a *App) resolve(ctx context.Context, t Target, needProject bool) (resolved, error) {
 	if t.Project != "" && t.Stack != "" && !needProject {
 		id, err := domain.NewIdentity(t.Project, t.Stack)
 		if err != nil {
@@ -121,7 +124,10 @@ func (a *App) resolve(t Target, needProject bool) (resolved, error) {
 	}
 	stack := t.Stack
 	if stack == "" {
-		stack = domain.DefaultStackName(proj.Root)
+		stack, err = a.checkoutStack(ctx, name, proj.Root)
+		if err != nil {
+			return resolved{}, err
+		}
 	}
 	id, err := domain.NewIdentity(name, stack)
 	if err != nil {
@@ -130,9 +136,54 @@ func (a *App) resolve(t Target, needProject bool) (resolved, error) {
 	return resolved{id: id, project: &proj}, nil
 }
 
+// checkoutStack names the stack commands act on when none is named: the
+// one running from the checkout, else the one most recently started from
+// it, else a new one named from the checkout path. A wrapper that starts a
+// checkout's stack under its own name, as hive does with the session name,
+// must not leave a plain `svx up` in that checkout starting a second one.
+// Two running stacks are ambiguous, since --name is how one checkout runs
+// two.
+func (a *App) checkoutStack(ctx context.Context, project, root string) (string, error) {
+	records, err := a.Store.List()
+	if err != nil {
+		return "", err
+	}
+	var alive, known []domain.Stack
+	for i := range records {
+		rec := records[i]
+		if rec.ID.Project != project || rec.Root != root {
+			continue
+		}
+		if rec.Status == domain.StackUp {
+			ok, err := a.stackAlive(ctx, &rec)
+			if err != nil {
+				return "", err
+			}
+			if ok {
+				alive = append(alive, rec)
+			}
+		}
+		known = append(known, rec)
+	}
+	switch {
+	case len(alive) == 1:
+		return alive[0].ID.Stack, nil
+	case len(alive) > 1:
+		names := make([]string, len(alive))
+		for i, s := range alive {
+			names[i] = s.ID.Stack
+		}
+		return "", usage(fmt.Errorf("%d stacks run from this checkout (%s), pick one with --name", len(alive), strings.Join(names, ", ")))
+	case len(known) > 0:
+		latest := slices.MaxFunc(known, func(x, y domain.Stack) int { return x.StartedAt.Compare(y.StartedAt) })
+		return latest.ID.Stack, nil
+	}
+	return domain.DefaultStackName(root), nil
+}
+
 // loadValidated loads and validates the project, emitting warnings.
-func (a *App) loadValidated(t Target) (resolved, error) {
-	r, err := a.resolve(t, true)
+func (a *App) loadValidated(ctx context.Context, t Target) (resolved, error) {
+	r, err := a.resolve(ctx, t, true)
 	if err != nil {
 		return r, err
 	}

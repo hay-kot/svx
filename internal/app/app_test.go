@@ -533,3 +533,71 @@ func TestUpInMissingSessionIsUsageError(t *testing.T) {
 		t.Errorf("started = %v, want none", f.mux.startedNames())
 	}
 }
+
+func TestUpWithoutNameJoinsStackRunningFromCheckout(t *testing.T) {
+	a, f := newTestApp(t, testDef(svc("api", 8080), svc("web", 3000, "api")))
+	named := mustUp(t, a, UpRequest{Target: target("task")})
+
+	plain := mustUp(t, a, UpRequest{Target: checkoutTarget()})
+	if plain.Stack.ID != named.Stack.ID || plain.Stack.Slot != named.Stack.Slot {
+		t.Fatalf("up without a name got %s in slot %d, want %s in slot %d", plain.Stack.ID, plain.Stack.Slot, named.Stack.ID, named.Stack.Slot)
+	}
+	if got := f.mux.startedNames(); len(got) != 2 {
+		t.Errorf("started = %v, want only the named up's windows", got)
+	}
+	if records, _ := f.store.List(); len(records) != 1 {
+		t.Errorf("records = %d, want the named stack alone", len(records))
+	}
+
+	view, err := a.Status(t.Context(), checkoutTarget())
+	if err != nil || view.Stack.ID != named.Stack.ID {
+		t.Errorf("status without a name = %s, %v; want %s", view.Stack.ID, err, named.Stack.ID)
+	}
+	if _, err := a.Down(t.Context(), DownRequest{Target: checkoutTarget()}); err != nil {
+		t.Fatal(err)
+	}
+	if rec, _, _ := f.store.Load(named.Stack.ID); rec.Status != domain.StackDown {
+		t.Errorf("down without a name left %s %s", named.Stack.ID, rec.Status)
+	}
+}
+
+func TestUpWithoutNameRevivesLastStackFromCheckout(t *testing.T) {
+	a, _ := newTestApp(t, testDef(svc("api", 8080)))
+	clock := time.Now()
+	a.Now = func() time.Time { return clock }
+
+	for _, name := range []string{"old", "new"} {
+		mustUp(t, a, UpRequest{Target: target(name)})
+		if _, err := a.Down(t.Context(), DownRequest{Target: target(name)}); err != nil {
+			t.Fatal(err)
+		}
+		clock = clock.Add(time.Minute)
+	}
+
+	res := mustUp(t, a, UpRequest{Target: checkoutTarget()})
+	if res.Stack.ID != ident("new") {
+		t.Fatalf("up without a name started %s, want the most recent stack, new", res.Stack.ID)
+	}
+}
+
+func TestUpWithoutNameInFreshCheckoutUsesDefaultName(t *testing.T) {
+	a, _ := newTestApp(t, testDef(svc("api", 8080)))
+	res := mustUp(t, a, UpRequest{Target: checkoutTarget()})
+	if want := domain.DefaultStackName(testRoot); res.Stack.ID.Stack != want {
+		t.Fatalf("stack = %q, want %q", res.Stack.ID.Stack, want)
+	}
+}
+
+func TestTwoStacksRunningFromCheckoutNeedName(t *testing.T) {
+	a, f := newTestApp(t, testDef(svc("api", 8080)))
+	mustUp(t, a, UpRequest{Target: target("one")})
+	mustUp(t, a, UpRequest{Target: target("two")})
+
+	_, err := a.Up(t.Context(), UpRequest{Target: checkoutTarget()})
+	if ExitCode(err) != ExitUsage || !strings.Contains(err.Error(), "--name") {
+		t.Fatalf("err = %v, want a usage error asking for --name", err)
+	}
+	if got := f.mux.startedNames(); len(got) != 2 {
+		t.Errorf("started = %v, want nothing beyond the two named stacks", got)
+	}
+}

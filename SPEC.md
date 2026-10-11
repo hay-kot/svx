@@ -36,6 +36,7 @@ Stack identity works like this:
 - A stack is keyed by project name plus stack name, and the tmux session is `svx-<project>-<stack>`.
 - The default stack name is a two-word name such as `amber-finch`, derived from a hash of the checkout path. The same checkout always gets the same name, and different worktrees get different ones.
 - `--name` or `SVX_STACK` overrides the name. That is how you run two stacks from one checkout.
+- Without either, commands act on the stack running from the checkout, else the one most recently started from it, else the default. While two stacks run from one checkout, commands ask for `--name`.
 - tmux rewrites `.` and `:` in session names to `_`, so svx restricts project and stack names to `[a-z0-9-]` and slugifies anything else.
 
 ## Configuration
@@ -217,7 +218,7 @@ Other rules:
 
 ## CLI
 
-Commands act on the stack for the current checkout unless `--name` or `SVX_STACK` says otherwise. Bare `svx` is `svx status`.
+Commands act on the stack for the current checkout, the one running or most recently started from it, unless `--name` or `SVX_STACK` says otherwise. Bare `svx` is `svx status`.
 
 | Command                    | What it does                                                                                                              |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |

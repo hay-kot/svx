@@ -46,7 +46,7 @@ func (a *App) Down(ctx context.Context, req DownRequest) (DownResult, error) {
 			}
 		}
 	} else {
-		r, err := a.resolve(req.Target, false)
+		r, err := a.resolve(ctx, req.Target, false)
 		if err != nil {
 			return DownResult{}, err
 		}
