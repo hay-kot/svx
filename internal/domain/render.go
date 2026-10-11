@@ -279,35 +279,40 @@ func (r *renderer) injectedService(name string, ports map[string]int) map[string
 	return env
 }
 
+// lookupPort resolves a service's main port, or the named port when name
+// holds one. fn names the template function for error messages.
+func (r *renderer) lookupPort(fn, svc string, name []string) (int, error) {
+	if len(name) > 1 {
+		return 0, fmt.Errorf("%s %q: takes a service and at most one port name", fn, svc)
+	}
+	pname := MainPort
+	if len(name) == 1 {
+		pname = name[0]
+	}
+	if _, ok := r.in.Def.Service(svc); !ok {
+		return 0, fmt.Errorf("%s %q: no such service", fn, svc)
+	}
+	p, ok := r.in.Ports.Get(svc, pname)
+	if !ok {
+		if pname == MainPort {
+			return 0, fmt.Errorf("%s %q: service has no `port`", fn, svc)
+		}
+		return 0, fmt.Errorf("%s %q %q: service has no port named %q", fn, svc, pname, pname)
+	}
+	return p, nil
+}
+
 func (r *renderer) funcs() template.FuncMap {
-	ports := r.in.Ports
 	environ := r.in.Environ
 	secrets := r.in.Secrets
 	return template.FuncMap{
 		"port": func(svc string, name ...string) (int, error) {
-			pname := MainPort
-			if len(name) > 0 {
-				pname = name[0]
-			}
-			if _, ok := r.in.Def.Service(svc); !ok {
-				return 0, fmt.Errorf("port %q: no such service", svc)
-			}
-			p, ok := ports.Get(svc, pname)
-			if !ok {
-				if pname == MainPort {
-					return 0, fmt.Errorf("port %q: service has no `port`", svc)
-				}
-				return 0, fmt.Errorf("port %q %q: service has no port named %q", svc, pname, pname)
-			}
-			return p, nil
+			return r.lookupPort("port", svc, name)
 		},
-		"url": func(svc string) (string, error) {
-			if _, ok := r.in.Def.Service(svc); !ok {
-				return "", fmt.Errorf("url %q: no such service", svc)
-			}
-			p, ok := ports.Get(svc, MainPort)
-			if !ok {
-				return "", fmt.Errorf("url %q: service has no `port`", svc)
+		"url": func(svc string, name ...string) (string, error) {
+			p, err := r.lookupPort("url", svc, name)
+			if err != nil {
+				return "", err
 			}
 			return BaseURL(p), nil
 		},

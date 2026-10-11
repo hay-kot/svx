@@ -183,6 +183,7 @@ func run() int {
 	root = commands.NewBarCmd(flags, deps).Register(root)
 	root = commands.NewInitCmd(flags, deps).Register(root)
 	root = commands.NewDoctorCmd(flags, deps).Register(root)
+	root = commands.NewGuideCmd().Register(root)
 	root = commands.NewRunCmd(flags, deps).Register(root)
 	// +scaffold:command:register
 
