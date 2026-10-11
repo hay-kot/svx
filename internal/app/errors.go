@@ -30,9 +30,9 @@ type ServiceError struct{ Services []string }
 
 func (e *ServiceError) Error() string {
 	if len(e.Services) == 1 {
-		return "service " + e.Services[0] + " failed, its window is left open for inspection: svx attach " + e.Services[0]
+		return "service " + e.Services[0] + " failed, see its output with `svx logs " + e.Services[0] + "`"
 	}
-	return "services failed: " + strings.Join(e.Services, ", ") + "; their windows are left open for inspection"
+	return "services failed: " + strings.Join(e.Services, ", ") + "; see their output with `svx logs <service>`"
 }
 
 // ExitCode maps an error to the process exit code.

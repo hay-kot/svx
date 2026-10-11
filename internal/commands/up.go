@@ -16,7 +16,6 @@ type UpCmd struct {
 	flags  *Flags
 	deps   *Deps
 	stack  stackFlags
-	attach bool
 	noWait bool
 }
 
@@ -32,7 +31,6 @@ func (cmd *UpCmd) Register(app *cli.Command) *cli.Command {
 		Usage:     "start the stack, or the named services plus their dependencies",
 		ArgsUsage: "[service...]",
 		Flags: append(cmd.stack.flags(),
-			&cli.BoolFlag{Name: "attach", Usage: "attach to the session afterwards", Destination: &cmd.attach},
 			&cli.BoolFlag{Name: "no-wait", Usage: "start windows in dependency order without waiting for readiness", Destination: &cmd.noWait},
 		),
 		Action: cmd.run,
@@ -65,11 +63,5 @@ func (cmd *UpCmd) run(ctx context.Context, c *cli.Command) error {
 			printStack(os.Stdout, st, view)
 		}
 	}
-	if err != nil {
-		return err
-	}
-	if cmd.attach {
-		return cmd.deps.App.Attach(ctx, cmd.stack.target(), "")
-	}
-	return nil
+	return err
 }

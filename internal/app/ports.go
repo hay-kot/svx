@@ -97,9 +97,6 @@ type Multiplexer interface {
 	// Capture returns the last lines of a window's history without blank
 	// lines, or all of it when lines is 0.
 	Capture(ctx context.Context, window string, lines int) (string, error)
-	// Attach hands the terminal to tmux, switching client when already
-	// inside tmux. window is a window id and may be empty.
-	Attach(ctx context.Context, session, window string) error
 	// PaneReady reports whether svx has finished setting up a pane's
 	// window: remain-on-exit, tags and the log pipe.
 	PaneReady(ctx context.Context, pane string) (bool, error)

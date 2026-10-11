@@ -27,6 +27,10 @@ func AgentPath() (string, error) {
 	return filepath.Join(home, "Library", "LaunchAgents", AgentLabel+".plist"), nil
 }
 
+// forwardedEnv is what the agent needs from the installing shell: tmux must
+// be on PATH, and svx must find the same tmux server and state.
+var forwardedEnv = []string{"PATH", "SVX_STATE_DIR", "SVX_TMUX_SOCKET", "SVX_TMUX_CONFIG"}
+
 // AgentEnv picks the environment the agent runs with. launchd starts
 // agents with a bare PATH that has no Homebrew, so the installing shell's
 // PATH goes in, along with svx's own overrides.

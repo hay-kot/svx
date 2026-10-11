@@ -57,7 +57,7 @@ func (cmd *LogsCmd) run(ctx context.Context, c *cli.Command) error {
 	}
 	if log.File == "" {
 		if cmd.follow {
-			return fmt.Errorf("-f needs a log file: set settings.logs: true, or use `svx attach %s`", service)
+			return errors.New("-f needs a log file: set settings.logs: true")
 		}
 		out := bufio.NewWriter(os.Stdout)
 		if err := cmd.writeTail(log.Scrollback, out); err != nil {

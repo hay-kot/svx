@@ -30,11 +30,6 @@ type MenuBarConfig struct {
 	// Enabled turns the menu bar on or off. Off, `svx bar` exits at once,
 	// so an installed login item stays out of the menu bar too.
 	Enabled bool `yaml:"enabled"`
-	// Terminal is the app "Attach in Terminal" opens, by name.
-	Terminal string `yaml:"terminal"`
-	// AttachURI, when set, is a template for the URI "Attach in Terminal"
-	// opens instead of Terminal.
-	AttachURI string `yaml:"attach_uri"`
 }
 
 // Default returns a Config with default values.
@@ -42,7 +37,7 @@ func Default() Config {
 	return Config{
 		LogLevel: "info",
 		LogFile:  "",
-		MenuBar:  MenuBarConfig{Enabled: true, Terminal: "Terminal", AttachURI: ""},
+		MenuBar:  MenuBarConfig{Enabled: true},
 		Projects: nil,
 	}
 }

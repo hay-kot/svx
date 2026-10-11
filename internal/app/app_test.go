@@ -353,6 +353,31 @@ func TestRestartSkipsDependentOfFailedDependency(t *testing.T) {
 	}
 }
 
+// --all restarts what up started and leaves a never-started idle service
+// alone.
+func TestRestartAllSkipsIdle(t *testing.T) {
+	worker := svc("worker", 0)
+	worker.Autostart = false
+	a, f := newTestApp(t, testDef(svc("db", 5432), svc("api", 3000, "db"), worker))
+	mustUp(t, a, UpRequest{Target: target("one")})
+	f.mux.resetCalls()
+
+	if _, err := a.Restart(t.Context(), RestartRequest{Target: target("one"), All: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.mux.respawnedNames(); !slices.Equal(got, []string{"db", "api"}) {
+		t.Errorf("respawned = %v, want [db api]", got)
+	}
+	if got := f.mux.startedNames(); len(got) != 0 {
+		t.Errorf("started = %v, want none", got)
+	}
+
+	_, err := a.Restart(t.Context(), RestartRequest{Target: target("one"), Services: []string{"api"}, All: true})
+	if ExitCode(err) != ExitUsage {
+		t.Errorf("services with --all: err = %v, want a usage error", err)
+	}
+}
+
 func TestStatusStates(t *testing.T) {
 	worker := svc("worker", 0)
 	worker.Autostart = false

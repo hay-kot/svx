@@ -154,7 +154,6 @@ func (m *fakeMux) KillWindow(_ context.Context, id string) error {
 }
 
 func (m *fakeMux) Capture(context.Context, string, int) (string, error) { return "", nil }
-func (m *fakeMux) Attach(context.Context, string, string) error         { return nil }
 func (m *fakeMux) PaneReady(context.Context, string) (bool, error)      { return true, nil }
 
 func (m *fakeMux) markDead(session, name string, code int) {

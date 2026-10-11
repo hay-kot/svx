@@ -1,5 +1,5 @@
 // Package menubar is svx's macOS menu bar app. It shows running stacks
-// with their links and lets you restart, attach to or stop one.
+// with their links and lets you restart or stop one.
 //
 // The Cocoa side follows Wails v3's system tray
 // (v3/pkg/application/systemtray_darwin.m): an NSStatusItem with an NSMenu
@@ -41,7 +41,6 @@ type ActionKind int
 const (
 	ActionNone ActionKind = iota
 	ActionOpenURL
-	ActionAttach
 	ActionStop
 	// ActionRestart restarts Service, or every started service when
 	// Service is empty.
@@ -156,7 +155,6 @@ func stackMenu(v app.StackView) []Entry {
 	entries := []Entry{
 		head,
 		{Kind: EntryAction, Title: "Restart All Services", Action: Action{Kind: ActionRestart, Stack: id}},
-		{Kind: EntryAction, Title: "Attach in Terminal", Action: Action{Kind: ActionAttach, Stack: id}},
 		{Kind: EntryAction, Title: "Stop Stack", Action: Action{Kind: ActionStop, Stack: id}},
 		{Kind: EntrySeparator},
 		{Kind: EntryHeader, Title: "Restart service"},
@@ -205,8 +203,8 @@ func serviceRows(id domain.Identity, sv app.ServiceView) ([]Entry, bool) {
 	case failedState(sv):
 		return []Entry{{
 			Kind: EntryAction, Title: svc.Name, Detail: fmt.Sprintf("exited (%d)", sv.ExitCode), Tone: ToneBad, Indent: 1,
-			Action: Action{Kind: ActionAttach, Stack: id, Service: svc.Name},
-		}, restart}, false
+			Action: Action{Kind: ActionRestart, Stack: id, Service: svc.Name},
+		}}, false
 	case sv.State != app.StateRunning:
 		return nil, false
 	}
@@ -240,18 +238,6 @@ func formatPorts(ports map[string]int) string {
 		}
 	}
 	return strings.Join(out, " ")
-}
-
-// RestartTargets picks what "Restart All Services" restarts: every service
-// that was started. Idle services were never asked for and stay idle.
-func RestartTargets(v app.StackView) []string {
-	var names []string
-	for _, svc := range v.Services {
-		if svc.State != app.StateIdle {
-			names = append(names, svc.Service.Name)
-		}
-	}
-	return names
 }
 
 // ErrorMenu shows a failure to read state in place of the stacks.

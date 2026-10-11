@@ -4,15 +4,9 @@ package menubar
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/hay-kot/svx/internal/app"
-	"github.com/hay-kot/svx/internal/domain"
 )
 
 // pollInterval is how often state is re-read. tmux, not svx, notices a
@@ -53,70 +47,17 @@ func (b *Bar) perform(ctx context.Context, a Action) error {
 	switch a.Kind {
 	case ActionOpenURL:
 		return b.App.Browser.Open(ctx, a.URL)
-	case ActionAttach:
-		return b.attach(ctx, a.Stack, a.Service)
 	case ActionStop:
 		_, err := b.App.Down(ctx, app.DownRequest{Target: app.Target{Project: a.Stack.Project, Stack: a.Stack.Stack}})
 		return err
 	case ActionRestart:
-		target := app.Target{Project: a.Stack.Project, Stack: a.Stack.Stack}
-		services := []string{a.Service}
-		if a.Service == "" {
-			view, err := b.App.Status(ctx, target)
-			if err != nil {
-				return err
-			}
-			services = RestartTargets(view)
+		req := app.RestartRequest{Target: app.Target{Project: a.Stack.Project, Stack: a.Stack.Stack}, All: a.Service == ""}
+		if !req.All {
+			req.Services = []string{a.Service}
 		}
-		_, err := b.App.Restart(ctx, app.RestartRequest{Target: target, Services: services})
+		_, err := b.App.Restart(ctx, req)
 		return err
 	case ActionNone:
 	}
 	return nil
-}
-
-// attach writes a script that runs svx attach, then opens the attach URI
-// when one is configured, or else the terminal app on the script. A .command
-// file is what Terminal and iTerm both run when opened.
-func (b *Bar) attach(ctx context.Context, id domain.Identity, service string) error {
-	dir := filepath.Join(b.App.Store.Dir(), "menubar")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	// One script per service: open returns before the terminal reads the
-	// file, so a shared path lets a second click overwrite the first.
-	path := filepath.Join(dir, id.Key()+"--"+service+".command")
-	if err := os.WriteFile(path, []byte(AttachScript(b.Executable, id, service, os.Getenv)), 0o700); err != nil { //nolint:gosec // the terminal must execute it
-		return err
-	}
-	if b.AttachURI != nil {
-		return b.openAttachURI(ctx, id, service, path)
-	}
-	terminal := b.Terminal
-	if terminal == "" {
-		terminal = "Terminal"
-	}
-	if out, err := exec.CommandContext(ctx, "open", "-a", terminal, path).CombinedOutput(); err != nil { //nolint:gosec // user-configured terminal app
-		return fmt.Errorf("opening %s: %s", terminal, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-func (b *Bar) openAttachURI(ctx context.Context, id domain.Identity, service, script string) error {
-	view, err := b.App.Status(ctx, app.Target{Project: id.Project, Stack: id.Stack})
-	if err != nil {
-		return err
-	}
-	uri, err := renderAttachURI(b.AttachURI, AttachURIData{
-		"project": id.Project,
-		"stack":   id.Stack,
-		"service": service,
-		"session": view.Stack.Session,
-		"command": attachCommand(b.Executable, id, service),
-		"script":  script,
-	})
-	if err != nil {
-		return err
-	}
-	return b.App.Browser.Open(ctx, uri)
 }
