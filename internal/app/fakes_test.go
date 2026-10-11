@@ -516,7 +516,7 @@ func newTestApp(t *testing.T, def domain.Definition) (*App, *fakes) {
 		store:    newFakeStore(),
 		ports:    &fakePorts{busy: map[int]bool{}, next: 40000},
 		ready:    &fakeReady{log: log, failures: map[int]int{}},
-		projects: &fakeProjects{project: Project{Def: def, Root: "/src/shop", CheckoutName: "shop"}},
+		projects: &fakeProjects{project: Project{Def: def, Root: testRoot, CheckoutName: "shop"}},
 	}
 	a := &App{
 		Projects:   f.projects,
@@ -572,6 +572,11 @@ func testDef(services ...domain.ServiceDef) domain.Definition {
 	}
 }
 
-func target(stack string) Target { return Target{Dir: "/src/shop", Stack: stack} }
+const testRoot = "/src/shop"
+
+func target(stack string) Target { return Target{Dir: testRoot, Stack: stack} }
+
+// checkoutTarget is a command run from the checkout without --name.
+func checkoutTarget() Target { return Target{Dir: testRoot} }
 
 func ident(stack string) domain.Identity { return domain.Identity{Project: "shop", Stack: stack} }

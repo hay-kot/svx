@@ -32,7 +32,7 @@ func (a *App) Restart(ctx context.Context, req RestartRequest) (UpResult, error)
 		return UpResult{}, usage(errors.New("name at least one service to restart, or pass --all"))
 	}
 
-	r, err := a.resolve(req.Target, false)
+	r, err := a.resolve(ctx, req.Target, false)
 	if err != nil {
 		return UpResult{}, err
 	}

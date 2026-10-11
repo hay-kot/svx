@@ -140,6 +140,35 @@ func TestNamedStacksFromOneCheckout(t *testing.T) {
 	}
 }
 
+// A checkout whose stack was started under a name, as hive does with its
+// session name, keeps that stack for commands run without one: a plain up
+// joins it instead of starting a second stack, and down stops it.
+func TestUpWithoutNameJoinsNamedStack(t *testing.T) {
+	h := NewHarness(t)
+	dir := h.CopySample("checkout")
+	if out, err := h.Run(dir, "up", "--name", "task", "--no-wait"); err != nil {
+		t.Fatalf("up --name task: %v\n%s", err, out)
+	}
+	if out, err := h.Run(dir, "up", "--no-wait"); err != nil {
+		t.Fatalf("up: %v\n%s", err, out)
+	}
+	if s := status(t, h, dir); s.Stack != "task" {
+		t.Fatalf("status without a name shows stack %q, want task", s.Stack)
+	}
+	for line := range strings.SplitSeq(strings.TrimSpace(h.StackWindows()), "\n") {
+		if line != "" && line != "sample--task" {
+			t.Fatalf("up without a name started a second stack:\n%s", h.StackWindows())
+		}
+	}
+
+	if out, err := h.Run(dir, "down"); err != nil {
+		t.Fatalf("down: %v\n%s", err, out)
+	}
+	if windows := h.StackWindows(); strings.Contains(windows, "sample--") {
+		t.Fatalf("windows survived down:\n%s", windows)
+	}
+}
+
 // The milestone 2 checks: a failing dependency makes up exit 1 naming it,
 // and exec sees the stack's ports.
 func TestFailingDependencyAndExec(t *testing.T) {

@@ -160,7 +160,7 @@ projects: # svx.yaml files for repos that have none of their own
 | `svx doctor`               | Check tmux, state, stale stacks and the menu bar                                                        |
 | `svx guide`                | Print the guide to writing `svx.yaml`                                                                   |
 
-Commands act on the current checkout's stack. `--name` (or `SVX_STACK`) picks another stack name, which is how one checkout runs two stacks. `--project` with `--name` targets a stack without reading any config.
+Commands act on the current checkout's stack: the one running from it, else the one most recently started from it, else a new one named from the checkout path. `--name` (or `SVX_STACK`) picks a stack by name, which is how one checkout runs two stacks; while two run, commands need it. `--project` with `--name` targets a stack without reading any config.
 
 Exit codes: 0 success, 1 a service failed or timed out, 2 a config or usage error.
 
