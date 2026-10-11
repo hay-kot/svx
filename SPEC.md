@@ -111,7 +111,7 @@ Service keys:
 | `oneshot`                     | The command is expected to exit. Exit code 0 counts as ready, anything else fails `up`.           |
 | `links`                       | Label to URL. A value starting with `/` is relative to the service's own URL.                     |
 | `autostart`                   | Default true. When false, the service starts only when named on the command line.                 |
-| `stop_signal`, `stop_timeout` | Defaults `SIGTERM` and `10s`.                                                                     |
+| `stop_signal`, `stop_timeout` | Defaults `SIGINT` and `10s`.                                                                      |
 
 With no `ready` key, a service with a `port` is ready when that port accepts a TCP connection. A service with no port is ready once its window has stayed alive for one second.
 
@@ -195,9 +195,10 @@ Each window runs `svx _run <stack> <service>`, a hidden subcommand that reads th
 What `svx down` does:
 
 1. Walk services in reverse dependency order.
-2. Send each window's process group its `stop_signal` and wait up to `stop_timeout` for the pane to die.
-3. Kill the session, which removes anything still running.
-4. Mark the stack down in the state directory. Its slot is released but remembered as a preference, and `.stack.dir` is kept unless `--purge` is given.
+2. Record the pane's process tree, send the window's process group its `stop_signal`, and wait up to `stop_timeout` until the pane is dead and every recorded process, its descendants and the pane's group have exited. A recorded process is matched by pid and command, so a recycled pid does not count.
+3. Send SIGTERM, then SIGKILL after a grace period, to the pane's group and each process left outside it.
+4. Close the windows.
+5. Mark the stack down in the state directory. Its slot is released but remembered as a preference, and `.stack.dir` is kept unless `--purge` is given.
 
 Behaviours I checked on tmux 3.4, which the implementation should rely on:
 

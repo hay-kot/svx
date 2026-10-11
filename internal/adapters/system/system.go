@@ -1,4 +1,4 @@
-// Package system holds the small OS-facing adapters: process signals, port
+// Package system holds the small OS-facing adapters: processes, port
 // probes, files and the browser.
 package system
 
@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,19 +20,63 @@ import (
 	"github.com/hay-kot/svx/internal/app"
 )
 
-// Signals implements app.Signaler with kill(2).
-type Signals struct{}
+// Processes implements app.Processes with ps(1) and kill(2). ps is the
+// portable reader: macOS has no /proc.
+type Processes struct{}
 
-var _ app.Signaler = Signals{}
+var _ app.Processes = Processes{}
 
-// SignalGroup signals every process in pid's group. A group that no longer
-// exists is not an error.
-func (Signals) SignalGroup(pid int, sig syscall.Signal) error {
+// Snapshot reads the whole process table.
+func (Processes) Snapshot(ctx context.Context) ([]app.Process, error) {
+	out, err := exec.CommandContext(ctx, "ps", "-eo", "pid=,ppid=,pgid=,command=").Output()
+	if err != nil {
+		return nil, fmt.Errorf("reading the process table: %w", err)
+	}
+	return parsePS(string(out)), nil
+}
+
+// parsePS reads `ps -o pid=,ppid=,pgid=,command=` output. A row that does
+// not parse is skipped, so one odd line cannot hide every other process.
+func parsePS(out string) []app.Process {
+	var table []app.Process
+	for line := range strings.SplitSeq(out, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 4 {
+			continue
+		}
+		var ids [3]int
+		ok := true
+		for i := range ids {
+			n, err := strconv.Atoi(f[i])
+			ids[i], ok = n, ok && err == nil
+		}
+		if !ok {
+			continue
+		}
+		table = append(table, app.Process{PID: ids[0], PPID: ids[1], PGID: ids[2], Command: strings.Join(f[3:], " ")})
+	}
+	return table
+}
+
+// Signal signals one process. One that no longer exists is not an error.
+func (Processes) Signal(pid int, sig syscall.Signal) error {
 	if pid <= 0 {
 		return nil
 	}
-	if err := syscall.Kill(-pid, sig); err != nil && !errors.Is(err, syscall.ESRCH) {
-		return fmt.Errorf("signalling process group %d: %w", pid, err)
+	if err := syscall.Kill(pid, sig); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return fmt.Errorf("signalling process %d: %w", pid, err)
+	}
+	return nil
+}
+
+// SignalGroup signals every process in pgid's group. A group that no longer
+// exists is not an error.
+func (Processes) SignalGroup(pgid int, sig syscall.Signal) error {
+	if pgid <= 0 {
+		return nil
+	}
+	if err := syscall.Kill(-pgid, sig); err != nil && !errors.Is(err, syscall.ESRCH) {
+		return fmt.Errorf("signalling process group %d: %w", pgid, err)
 	}
 	return nil
 }

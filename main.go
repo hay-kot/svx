@@ -238,7 +238,7 @@ func wire(deps *commands.Deps, cfg config.Config) error {
 		Projects:   yamlproject.Repository{Projects: cfg.Projects},
 		Store:      store,
 		Mux:        mux,
-		Signals:    system.Signals{},
+		Procs:      system.Processes{},
 		Ports:      system.Ports{},
 		Ready:      readiness.New(),
 		Files:      system.Files{},

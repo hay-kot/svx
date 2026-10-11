@@ -107,9 +107,23 @@ type Multiplexer interface {
 	PaneReady(ctx context.Context, pane string) (bool, error)
 }
 
-// Signaler signals process groups.
-type Signaler interface {
-	SignalGroup(pid int, sig syscall.Signal) error
+// Process is one row of the process table.
+type Process struct {
+	PID  int
+	PPID int
+	PGID int
+	// Command is the full command line. Together with PID it identifies a
+	// process, since a pid alone can be recycled.
+	Command string
+}
+
+// Processes reads the process table and signals processes. A process or
+// group that no longer exists is not an error.
+type Processes interface {
+	// Snapshot reads every process on the machine.
+	Snapshot(ctx context.Context) ([]Process, error)
+	Signal(pid int, sig syscall.Signal) error
+	SignalGroup(pgid int, sig syscall.Signal) error
 }
 
 // PortProber tests ports on loopback.

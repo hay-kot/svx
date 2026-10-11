@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"syscall"
-	"time"
 
 	"github.com/hay-kot/appkit/concurrency"
 
@@ -140,55 +138,4 @@ func (a *App) stopServices(ctx context.Context, stack domain.Stack, names []stri
 		}
 	}
 	return nil
-}
-
-// stopOne signals a pane's process group and waits for the pane to die. The
-// pane's process leads its own group, so the negative pid reaches the
-// command and everything it spawned.
-func (a *App) stopOne(ctx context.Context, stack domain.Stack, svc domain.Service, w Window) {
-	a.emit(Event{Kind: EventStopping, Service: svc.Name, Detail: "", Elapsed: 0})
-	sig, err := domain.ParseSignal(svc.Stop.Signal)
-	if err != nil {
-		sig = syscall.SIGTERM
-	}
-	timeout := svc.Stop.Timeout
-	if timeout <= 0 {
-		timeout = domain.DefaultStopTimeout
-	}
-
-	start := a.Now()
-	_ = a.Signals.SignalGroup(w.PanePID, sig)
-	if a.waitDead(ctx, stack, svc.Name, timeout) {
-		a.emit(Event{Kind: EventStopped, Service: svc.Name, Detail: "", Elapsed: a.Now().Sub(start)})
-		return
-	}
-
-	_ = a.Signals.SignalGroup(w.PanePID, syscall.SIGKILL)
-	a.waitDead(ctx, stack, svc.Name, 2*time.Second)
-	a.emit(Event{
-		Kind:    EventStopped,
-		Service: svc.Name,
-		Detail:  fmt.Sprintf("did not stop within %s of %s, killed", timeout, svc.Stop.Signal),
-		Elapsed: a.Now().Sub(start),
-	})
-}
-
-func (a *App) waitDead(ctx context.Context, stack domain.Stack, name string, timeout time.Duration) bool {
-	deadline := a.Now().Add(timeout)
-	ticker := time.NewTicker(a.poll())
-	defer ticker.Stop()
-	for {
-		w, found, err := a.window(ctx, stack, name)
-		if err == nil && (!found || w.Dead) {
-			return true
-		}
-		if a.Now().After(deadline) {
-			return false
-		}
-		select {
-		case <-ctx.Done():
-			return false
-		case <-ticker.C:
-		}
-	}
 }

@@ -148,6 +148,7 @@ func (m *fakeMux) Windows(_ context.Context, s, stack string) ([]Window, error) 
 func (m *fakeMux) KillWindow(_ context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.log.add("close:" + id)
 	for s, ws := range m.sessions {
 		m.sessions[s] = slices.DeleteFunc(ws, func(w *fakeWindow) bool { return w.ID == id })
 		if len(m.sessions[s]) == 0 {
@@ -185,6 +186,34 @@ func (m *fakeMux) paneByPID(pid int) *fakeWindow {
 		}
 	}
 	return nil
+}
+
+func (m *fakeMux) paneOf(name string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, ws := range m.sessions {
+		for _, w := range ws {
+			if w.Name == name {
+				return w.PanePID
+			}
+		}
+	}
+	return 0
+}
+
+// livePanes maps the pid of each live svx pane to its service.
+func (m *fakeMux) livePanes() map[int]string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	panes := map[int]string{}
+	for _, ws := range m.sessions {
+		for _, w := range ws {
+			if w.stack != "" && !w.Dead {
+				panes[w.PanePID] = w.Name
+			}
+		}
+	}
+	return panes
 }
 
 func (m *fakeMux) nameByPID(pid int) string {
@@ -232,42 +261,121 @@ func (m *fakeMux) resetCalls() {
 }
 
 type signalCall struct {
-	Name string
-	Sig  syscall.Signal
+	// Name is the service for a pane, or "pid:N" for any other process.
+	Name  string
+	Sig   syscall.Signal
+	Group bool
 }
 
-type fakeSignals struct {
-	mu    sync.Mutex
-	mux   *fakeMux
-	log   *eventLog
-	calls []signalCall
-	// ignore names services that survive anything short of SIGKILL.
+// fakeChild is a process a service started beyond its pane's own.
+type fakeChild struct {
+	Process
+
+	// lingers is how many snapshots it keeps running once its pane is
+	// dead, as a supervisor that is still tearing down would.
+	lingers int
+	// stubborn survives anything short of SIGKILL.
+	stubborn bool
+}
+
+// fakeProcs models the process table: each live pane leads its own group,
+// and children are reparented to pid 1 when their pane dies.
+type fakeProcs struct {
+	mu       sync.Mutex
+	mux      *fakeMux
+	log      *eventLog
+	calls    []signalCall
+	children []*fakeChild
+	// ignore names services whose pane survives anything short of SIGKILL.
 	ignore map[string]bool
 }
 
-func (s *fakeSignals) SignalGroup(pid int, sig syscall.Signal) error {
-	name := s.mux.nameByPID(pid)
-	if sig == syscall.SIGKILL || !s.ignore[name] {
-		s.mux.markDeadByPID(pid, 128+int(sig))
-	}
+// addChild starts a child under service's pane, in a process group of its
+// own.
+func (s *fakeProcs) addChild(service string, pid, lingers int, stubborn bool) {
+	pane := s.mux.paneOf(service)
 	s.mu.Lock()
-	s.calls = append(s.calls, signalCall{Name: name, Sig: sig})
-	s.mu.Unlock()
-	s.log.add("signal:" + name)
+	defer s.mu.Unlock()
+	s.children = append(s.children, &fakeChild{
+		PID:      pid,
+		PPID:     pane,
+		PGID:     pid,
+		Command:  fmt.Sprintf("child-%d", pid),
+		lingers:  lingers,
+		stubborn: stubborn,
+	})
+}
+
+func (s *fakeProcs) Snapshot(context.Context) ([]Process, error) {
+	panes := s.mux.livePanes()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var table []Process
+	for pid, name := range panes {
+		table = append(table, Process{PID: pid, PPID: 1, PGID: pid, Command: "svx _run " + name})
+	}
+	s.children = slices.DeleteFunc(s.children, func(c *fakeChild) bool {
+		if _, ok := panes[c.PPID]; ok {
+			return false
+		}
+		c.PPID = 1
+		if c.lingers == 0 {
+			s.log.add(fmt.Sprintf("exit:%d", c.PID))
+			return true
+		}
+		c.lingers--
+		return false
+	})
+	for _, c := range s.children {
+		table = append(table, c.Process)
+	}
+	return table, nil
+}
+
+func (s *fakeProcs) Signal(pid int, sig syscall.Signal) error {
+	s.deliver(pid, sig, false)
 	return nil
 }
 
-func (s *fakeSignals) sigs() []syscall.Signal {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make([]syscall.Signal, len(s.calls))
-	for i, c := range s.calls {
-		out[i] = c.Sig
-	}
-	return out
+func (s *fakeProcs) SignalGroup(pgid int, sig syscall.Signal) error {
+	s.deliver(pgid, sig, true)
+	return nil
 }
 
-func (s *fakeSignals) names() []string {
+func (s *fakeProcs) deliver(id int, sig syscall.Signal, group bool) {
+	name := s.mux.nameByPID(id)
+	if name != "" && (sig == syscall.SIGKILL || !s.ignore[name]) {
+		s.mux.markDeadByPID(id, 128+int(sig))
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.children = slices.DeleteFunc(s.children, func(c *fakeChild) bool {
+		hit := c.PID == id
+		if group {
+			hit = c.PGID == id
+		}
+		return hit && (sig == syscall.SIGKILL || !c.stubborn)
+	})
+	if name == "" {
+		name = fmt.Sprintf("pid:%d", id)
+	}
+	s.calls = append(s.calls, signalCall{Name: name, Sig: sig, Group: group})
+	s.log.add("signal:" + name)
+}
+
+func (s *fakeProcs) alive(pid int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.ContainsFunc(s.children, func(c *fakeChild) bool { return c.PID == pid })
+}
+
+func (s *fakeProcs) all() []signalCall {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.calls)
+}
+
+func (s *fakeProcs) names() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]string, len(s.calls))
@@ -388,7 +496,7 @@ func (f *fakeProjects) Init(string, InitOptions) ([]string, error) { return nil,
 type fakes struct {
 	log      *eventLog
 	mux      *fakeMux
-	signals  *fakeSignals
+	procs    *fakeProcs
 	store    *fakeStore
 	ports    *fakePorts
 	ready    *fakeReady
@@ -404,7 +512,7 @@ func newTestApp(t *testing.T, def domain.Definition) (*App, *fakes) {
 	f := &fakes{
 		log:      log,
 		mux:      mux,
-		signals:  &fakeSignals{mux: mux, log: log},
+		procs:    &fakeProcs{mux: mux, log: log},
 		store:    newFakeStore(),
 		ports:    &fakePorts{busy: map[int]bool{}, next: 40000},
 		ready:    &fakeReady{log: log, failures: map[int]int{}},
@@ -414,7 +522,7 @@ func newTestApp(t *testing.T, def domain.Definition) (*App, *fakes) {
 		Projects:   f.projects,
 		Store:      f.store,
 		Mux:        f.mux,
-		Signals:    f.signals,
+		Procs:      f.procs,
 		Ports:      f.ports,
 		Ready:      f.ready,
 		Files:      fakeFiles{},
@@ -422,6 +530,7 @@ func newTestApp(t *testing.T, def domain.Definition) (*App, *fakes) {
 		Now:        time.Now,
 		Executable: "svx",
 		Poll:       2 * time.Millisecond,
+		KillGrace:  20 * time.Millisecond,
 	}
 	return a, f
 }

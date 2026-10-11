@@ -75,7 +75,6 @@ services:
     depends: [migrate]
     ready: { http: /healthz, timeout: 30s }
     links: { API: /, Docs: /docs }
-    stop_signal: SIGINT
     stop_timeout: 5s
     retries: 3 # rerun up to 3 times if it crashes
 
@@ -98,6 +97,8 @@ services:
 Service keys: `run` (required), `dir`, `port` (number or `auto`), `ports`, `env`, `depends`, `ready` (one of `http`, `cmd`, `output`, `delay`, plus `timeout`), `oneshot`, `links`, `autostart`, `retries`, `stop_signal`, `stop_timeout`. Unknown keys are errors.
 
 `retries` reruns a command in its window after a non-zero exit, one second apart, and the window prints each retry. It covers crashes after `svx up` returns too. An exit that follows `svx down` or `svx restart` is never retried. A oneshot retries until it succeeds or runs out.
+
+`svx down` and `svx restart` stop a service the way Ctrl-C does: SIGINT to its window's process group. svx then waits up to `stop_timeout` (default 10s) until every process the service started has exited, including ones that moved to a process group of their own, and only then closes or respawns the window. Whatever is still running at the timeout gets SIGTERM, then SIGKILL two seconds later. Set `stop_signal` for a command that does not stop on SIGINT. A job that `run` puts in the background with `&` ignores SIGINT, as it would in a terminal, so it stops only at the timeout.
 
 Without `ready`, a service with a `port` is ready when the port accepts a TCP connection, and one without is ready after staying up for a second.
 
