@@ -58,7 +58,10 @@ type ServiceDef struct {
 	Oneshot   bool
 	Links     []LinkDef
 	Autostart bool
-	Stop      StopSpec
+	// Retries is how many times the command reruns after a non-zero exit.
+	// The project's settings.retries fills it when the service sets none.
+	Retries int
+	Stop    StopSpec
 }
 
 // PortSpec is a declared port: a base number offset by the slot, or "auto"

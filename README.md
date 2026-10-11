@@ -46,6 +46,7 @@ settings:
   max_slots: 50
   logs: false # true also writes each window to .svx/<stack>/logs/<service>.log
   menubar: true # false hides this project's stacks from the menu bar
+  retries: 0 # default for services: reruns after a non-zero exit
 
 vars:
   db_name: "shop_{{ snake .stack.name }}"
@@ -73,6 +74,7 @@ services:
     links: { API: /, Docs: /docs }
     stop_signal: SIGINT
     stop_timeout: 5s
+    retries: 3 # rerun up to 3 times if it crashes
 
   web:
     run: "npm run dev -- --port {{ .port }} --strictPort"
@@ -90,7 +92,9 @@ services:
     autostart: false # only starts when named: svx up worker
 ```
 
-Service keys: `run` (required), `dir`, `port` (number or `auto`), `ports`, `env`, `depends`, `ready` (one of `http`, `cmd`, `output`, `delay`, plus `timeout`), `oneshot`, `links`, `autostart`, `stop_signal`, `stop_timeout`. Unknown keys are errors.
+Service keys: `run` (required), `dir`, `port` (number or `auto`), `ports`, `env`, `depends`, `ready` (one of `http`, `cmd`, `output`, `delay`, plus `timeout`), `oneshot`, `links`, `autostart`, `retries`, `stop_signal`, `stop_timeout`. Unknown keys are errors.
+
+`retries` reruns a command in its window after a non-zero exit, one second apart, and the window prints each retry. It covers crashes after `svx up` returns too. An exit that follows `svx down` or `svx restart` is never retried. A oneshot retries until it succeeds or runs out.
 
 Without `ready`, a service with a `port` is ready when the port accepts a TCP connection, and one without is ready after staying up for a second.
 

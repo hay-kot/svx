@@ -61,6 +61,7 @@ type runtimeService struct {
 	ReadyTimeout time.Duration     `json:"ready_timeout"`
 	Oneshot      bool              `json:"oneshot"`
 	Autostart    bool              `json:"autostart"`
+	Retries      int               `json:"retries"`
 	StopSignal   string            `json:"stop_signal"`
 	StopTimeout  time.Duration     `json:"stop_timeout"`
 	LogFile      string            `json:"log_file"`
@@ -115,6 +116,7 @@ func toRuntime(s domain.Stack) runtime {
 			ReadyTimeout: svc.Ready.Timeout,
 			Oneshot:      svc.Oneshot,
 			Autostart:    svc.Autostart,
+			Retries:      svc.Retries,
 			StopSignal:   svc.Stop.Signal,
 			StopTimeout:  svc.Stop.Timeout,
 			LogFile:      svc.LogFile,
@@ -166,7 +168,7 @@ func fromFiles(r record, rt *runtime) domain.Stack {
 			rs := rt.Services[name]
 			svc.Run, svc.Dir, svc.Env, svc.Depends = rs.Run, rs.Dir, rs.Env, rs.Depends
 			svc.Ready = domain.ReadySpec{Kind: domain.ReadyKind(rs.ReadyKind), Value: rs.ReadyValue, Timeout: rs.ReadyTimeout}
-			svc.Oneshot, svc.Autostart, svc.LogFile = rs.Oneshot, rs.Autostart, rs.LogFile
+			svc.Oneshot, svc.Autostart, svc.Retries, svc.LogFile = rs.Oneshot, rs.Autostart, rs.Retries, rs.LogFile
 			svc.Stop = domain.StopSpec{Signal: rs.StopSignal, Timeout: rs.StopTimeout}
 		}
 		s.Services = append(s.Services, svc)

@@ -31,7 +31,7 @@ func sampleStack() domain.Stack {
 				Links: []domain.Link{{Label: "App", URL: "http://127.0.0.1:5183/"}},
 				Run:   "npm run dev", Dir: "/src/shop/web", Env: map[string]string{"PORT": "5183"},
 				Depends: []string{"api"}, Ready: domain.ReadySpec{Kind: domain.ReadyHTTP, Value: "http://x", Timeout: time.Second},
-				Autostart: true, Stop: domain.StopSpec{Signal: "SIGTERM", Timeout: 10 * time.Second}, LogFile: "/l/web.log",
+				Autostart: true, Retries: 3, Stop: domain.StopSpec{Signal: "SIGTERM", Timeout: 10 * time.Second}, LogFile: "/l/web.log",
 			},
 			{Name: "api", Ports: map[string]int{}, Links: []domain.Link{}, Env: map[string]string{}, Autostart: true},
 			{Name: "migrate", Ports: map[string]int{}, Links: []domain.Link{}, Env: map[string]string{}, Autostart: true, Oneshot: true},

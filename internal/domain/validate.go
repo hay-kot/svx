@@ -135,6 +135,10 @@ func validateService(s ServiceDef, seen *declared, fail func(key, format string,
 
 	validateReady(s, fail)
 
+	if s.Retries < 0 {
+		fail(key+".retries", "must be 0 or more")
+	}
+
 	if _, err := ParseSignal(s.Stop.Signal); err != nil {
 		fail(key+".stop_signal", "%v", err)
 	}

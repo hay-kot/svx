@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"syscall"
 
 	"github.com/hay-kot/svx/internal/domain"
 )
@@ -12,6 +13,12 @@ type RunPlan struct {
 	Argv   []string
 	Env    []string
 	Banner string
+	// Retries is how many times to rerun the command after a non-zero
+	// exit. With none, the shim execs the command in its own place.
+	Retries int
+	// StopSignal is the signal svx stops the service with. The shim must
+	// not retry after it.
+	StopSignal syscall.Signal
 }
 
 // PaneOwned lists variables a pane sets for itself, which must win over the
@@ -41,10 +48,17 @@ func (a *App) PlanRun(key, service string, pid int, current map[string]string) (
 	}
 	banner += " " + domain.RunMarker(pid) + " -- " + svc.Run
 
+	stop, err := domain.ParseSignal(svc.Stop.Signal)
+	if err != nil {
+		return RunPlan{}, err
+	}
+
 	return RunPlan{
-		Dir:    svc.Dir,
-		Argv:   []string{"/bin/sh", "-c", svc.Run},
-		Env:    domain.ProcessEnv(stack.Snapshot, svc.Env, current, PaneOwned...),
-		Banner: banner,
+		Dir:        svc.Dir,
+		Argv:       []string{"/bin/sh", "-c", svc.Run},
+		Env:        domain.ProcessEnv(stack.Snapshot, svc.Env, current, PaneOwned...),
+		Banner:     banner,
+		Retries:    svc.Retries,
+		StopSignal: stop,
 	}, nil
 }

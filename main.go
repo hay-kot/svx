@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -189,6 +190,9 @@ func run() int {
 	defer stop()
 
 	if err := root.Run(ctx, os.Args); err != nil {
+		if _, ok := errors.AsType[*app.CommandExitError](err); ok {
+			return app.ExitCode(err)
+		}
 		colorRed := "\033[38;2;215;95;107m"
 		colorGray := "\033[38;2;163;163;163m"
 		colorReset := "\033[0m"
