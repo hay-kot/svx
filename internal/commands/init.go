@@ -48,5 +48,8 @@ func (cmd *InitCmd) run(_ context.Context, _ *cli.Command) error {
 	for _, p := range changed {
 		_, _ = fmt.Fprintf(os.Stdout, "wrote %s\n", p)
 	}
+	if err == nil {
+		_, _ = fmt.Fprintln(os.Stdout, "run `svx guide` for how to write svx.yaml")
+	}
 	return err
 }

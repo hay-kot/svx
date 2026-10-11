@@ -12,16 +12,18 @@ import (
 )
 
 const starter = `# svx.yaml -- services svx runs as windows in a tmux session.
-# Reference: run ` + "`svx config`" + ` to see this file rendered for your stack.
+# Run ` + "`svx guide`" + ` for how to write this file, and ` + "`svx config`" + ` to see it
+# rendered for your stack.
 
 # project: myapp            # defaults to the main checkout's directory name
 
-settings:
-  port_stride: 10           # every port is base + slot * port_stride
+# settings:                 # every value below is the default
+  # port_stride: 10         # every port is base + slot * port_stride
   # max_slots: 50
-  # logs: true              # also write each window to .svx/<stack>/logs/<service>.log
+  # logs: false             # true also writes each window to .svx/<stack>/logs/<service>.log
   # menubar: true           # list this project's stacks in the menu bar
   # retries: 0              # rerun a service this many times after a crash
+  # window_name: "{{ .service.name }}"  # tmux window name, a template
 
 # vars:
 #   db_name: 'myapp_{{ snake .stack.name }}'
@@ -31,7 +33,7 @@ settings:
 
 services:
   web:
-    run: 'python3 -m http.server {{ .port }}'
+    run: python3 -m http.server $PORT
     port: 8000
     links:
       App: /

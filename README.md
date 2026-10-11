@@ -34,6 +34,8 @@ mise run demo:down
 
 ## Configuration
 
+`svx guide` prints a guide to writing `svx.yaml`, for people and coding agents. It ships in the binary, so it matches the installed version.
+
 `svx.yaml` lives at the repo root and is found by walking up from the current directory. `svx.local.yaml` beside it is merged on top for personal overrides (deep merge, keep it gitignored). A repo without an `svx.yaml` can use one kept elsewhere, such as your dotfiles, through `projects` in the [user config](#user-config).
 
 To use svx in a repo without committing anything, run `svx init --stealth`. It ignores `svx.yaml`, `svx.local.yaml` and `.svx/` in `.git/info/exclude`, which git never tracks, instead of `.gitignore`.
@@ -111,12 +113,14 @@ Without `ready`, a service with a `port` is ready when the port accepts a TCP co
 | `.port`, `.ports.<name>`                                     | This service's ports                                                       |
 | `.vars.<name>`                                               | A value from `vars`                                                        |
 | `port "svc"`, `port "svc" "name"`                            | Another service's port                                                     |
-| `url "svc"`                                                  | Another service's base URL                                                 |
+| `url "svc"`, `url "svc" "name"`                             | Another service's base URL, on its main or a named port                    |
 | `env "NAME"`                                                 | A variable from the shell `svx up` ran in                                  |
 | `secret "env:NAME"`, `secret "file:/path"`                   | A secret, resolved with [appkit/secret](https://github.com/hay-kot/appkit) |
 | `snake`, `slug`, `upper`, `lower`                            | String helpers                                                             |
 
 Every service also gets `SVX_PROJECT`, `SVX_STACK`, `SVX_SLOT`, `SVX_STACK_DIR`, `SVX_SERVICE`, `PORT`, `PORT_<NAME>`, `SVX_PORT_<SERVICE>[_<NAME>]` and `SVX_URL_<SERVICE>`. Later sources win: your shell, then injected variables, then top-level `env`, then the service's `env`.
+
+`run` goes through `/bin/sh -c`, so `run: npm run dev -- --port $PORT` works without a template. Other tools can read these variables directly instead of through a copy in `env`. A docker compose file can publish `"${SVX_PORT_INFRA_POSTGRES:-5432}:5432"` and keep working without svx. `svx exec` gets the stack-wide variables but not `PORT` or `PORT_<NAME>`, so prefer `SVX_PORT_*` there.
 
 Run `svx config` to see everything rendered for your stack without starting anything.
 
@@ -153,6 +157,7 @@ projects: # svx.yaml files for repos that have none of their own
 | `svx bar`                  | Run the menu bar. `--install` starts it now and at login, `--uninstall` removes that                    |
 | `svx init`                 | Write a starter `svx.yaml`. `--stealth` ignores svx's files in `.git/info/exclude`, `svx.yaml` included |
 | `svx doctor`               | Check tmux, state, stale stacks and the menu bar                                                        |
+| `svx guide`                | Print the guide to writing `svx.yaml`                                                                   |
 
 Commands act on the current checkout's stack. `--name` (or `SVX_STACK`) picks another stack name, which is how one checkout runs two stacks. `--project` with `--name` targets a stack without reading any config.
 
