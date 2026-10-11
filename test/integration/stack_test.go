@@ -350,3 +350,23 @@ services:
 		t.Fatalf("down left windows:\n%s", got)
 	}
 }
+
+// Outside tmux, up needs --session, and then starts the stack there.
+func TestUpOutsideTmuxWithSession(t *testing.T) {
+	h := NewHarness(t)
+	dir := h.CopySample("checkout")
+	h.tmuxEnv = nil
+
+	if out, err := h.Run(dir, "up"); exitCode(err) != 2 {
+		t.Fatalf("up outside tmux: exit %d, want 2\n%s", exitCode(err), out)
+	}
+	if out, err := h.Run(dir, "up", "--session", "nope"); exitCode(err) != 2 {
+		t.Fatalf("up --session nope: exit %d, want 2\n%s", exitCode(err), out)
+	}
+	if out, err := h.Run(dir, "up", "--session", "work"); err != nil {
+		t.Fatalf("up --session work: %v\n%s", err, out)
+	}
+	if s := status(t, h, dir); s.Session != "work" || s.state("api") != "running" {
+		t.Fatalf("status = %+v, want api running in work", s)
+	}
+}

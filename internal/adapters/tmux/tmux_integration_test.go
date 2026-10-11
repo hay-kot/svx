@@ -224,6 +224,20 @@ func TestMissingSessionIsAbsence(t *testing.T) {
 	}
 }
 
+func TestHasSessionMatchesExactName(t *testing.T) {
+	c := newTestClient(t)
+	if ok, err := c.HasSession(t.Context(), "work"); err != nil || ok {
+		t.Fatalf("HasSession with no server = %v, %v; want false", ok, err)
+	}
+	userSession(t, c, "work-2")
+	if ok, err := c.HasSession(t.Context(), "work"); err != nil || ok {
+		t.Fatalf("HasSession(work) = %v, %v; want no prefix match", ok, err)
+	}
+	if ok, err := c.HasSession(t.Context(), "work-2"); err != nil || !ok {
+		t.Fatalf("HasSession(work-2) = %v, %v; want true", ok, err)
+	}
+}
+
 // A respawned pane keeps its window and keeps logging to the same file.
 func TestRespawnKeepsWindowAndLogging(t *testing.T) {
 	c := newTestClient(t)

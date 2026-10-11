@@ -68,6 +68,10 @@ func (m *fakeMux) CurrentSession(context.Context) (string, bool, error) {
 	return m.current, m.current != "", nil
 }
 
+func (m *fakeMux) HasSession(_ context.Context, name string) (bool, error) {
+	return m.hasSession(name), nil
+}
+
 // addSession makes a session holding one untagged window, like a user's.
 func (m *fakeMux) addSession(name string) {
 	m.mu.Lock()

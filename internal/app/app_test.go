@@ -509,3 +509,25 @@ func TestUpOutsideTmuxIsUsageError(t *testing.T) {
 		t.Errorf("started = %v, want none", f.mux.startedNames())
 	}
 }
+
+func TestUpInNamedSessionFromOutsideTmux(t *testing.T) {
+	a, f := newTestApp(t, testDef(svc("api", 8080)))
+	f.mux.current = ""
+	f.mux.addSession("dev")
+
+	up := mustUp(t, a, UpRequest{Target: target("one"), Session: "dev"})
+	if up.Stack.Session != "dev" || !slices.Equal(f.mux.startedNames(), []string{"api"}) {
+		t.Fatalf("session=%q started=%v, want api started in dev", up.Stack.Session, f.mux.startedNames())
+	}
+}
+
+func TestUpInMissingSessionIsUsageError(t *testing.T) {
+	a, f := newTestApp(t, testDef(svc("api", 8080)))
+	_, err := a.Up(t.Context(), UpRequest{Target: target("one"), Session: "ghost"})
+	if ExitCode(err) != ExitUsage {
+		t.Fatalf("err = %v, want a usage error", err)
+	}
+	if len(f.mux.started) != 0 {
+		t.Errorf("started = %v, want none", f.mux.startedNames())
+	}
+}

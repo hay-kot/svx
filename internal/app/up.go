@@ -19,6 +19,9 @@ type UpRequest struct {
 	// NoWait starts windows in dependency order without waiting for
 	// readiness.
 	NoWait bool
+	// Session names an existing tmux session to start in, in place of the
+	// one svx runs from. It lets up run from outside tmux.
+	Session string
 }
 
 // UpResult describes what `up` did.
@@ -48,19 +51,17 @@ type Outcome struct {
 }
 
 // errOutsideTmux is returned by Up when svx does not run in a pane on its
-// tmux server. svx never creates sessions: a stack's windows go in the
-// session up runs from.
-var errOutsideTmux = errors.New("svx up runs inside tmux, start a session with `tmux new` and run it there")
+// tmux server and no session is named. svx never creates sessions: a
+// stack's windows go in the session up runs from, or the one it is given.
+var errOutsideTmux = errors.New("svx up runs inside tmux, run it in a tmux session or name one with --session")
 
-// Up brings a stack up in the session it runs from. It is safe to repeat:
-// running windows are left alone and only missing or dead ones start.
+// Up brings a stack up in the named session, or else the session it runs
+// from. It is safe to repeat: running windows are left alone and only
+// missing or dead ones start.
 func (a *App) Up(ctx context.Context, req UpRequest) (UpResult, error) {
-	session, inside, err := a.Mux.CurrentSession(ctx)
+	session, err := a.upSession(ctx, req.Session)
 	if err != nil {
 		return UpResult{}, err
-	}
-	if !inside {
-		return UpResult{}, usage(errOutsideTmux)
 	}
 
 	r, err := a.loadValidated(req.Target)
@@ -96,6 +97,27 @@ func (a *App) Up(ctx context.Context, req UpRequest) (UpResult, error) {
 		return result, &ServiceError{Services: failed}
 	}
 	return result, nil
+}
+
+func (a *App) upSession(ctx context.Context, named string) (string, error) {
+	if named != "" {
+		exists, err := a.Mux.HasSession(ctx, named)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			return "", usage(fmt.Errorf("tmux session %q not found, svx never creates sessions", named))
+		}
+		return named, nil
+	}
+	session, inside, err := a.Mux.CurrentSession(ctx)
+	if err != nil {
+		return "", err
+	}
+	if !inside {
+		return "", usage(errOutsideTmux)
+	}
+	return session, nil
 }
 
 // prepared is what Up needs to know about where a stack runs.
