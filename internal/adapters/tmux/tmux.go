@@ -161,7 +161,7 @@ func (c *Client) CurrentSession(ctx context.Context) (string, bool, error) {
 // window and exit status with it. svx windows run the _run shim, which
 // waits for PaneReady first, and setup sets the service tag last.
 func (c *Client) StartWindow(ctx context.Context, spec app.WindowSpec) (string, error) {
-	args := []string{"new-window", "-d", "-t", sessionTarget(spec.Session) + ":", "-n", spec.Service, "-P", "-F", "#{window_id}"}
+	args := []string{"new-window", "-d", "-t", sessionTarget(spec.Session) + ":", "-n", windowName(spec), "-P", "-F", "#{window_id}"}
 	if spec.Dir != "" {
 		args = append(args, "-c", spec.Dir)
 	}
@@ -187,6 +187,16 @@ func (c *Client) StartWindow(ctx context.Context, spec app.WindowSpec) (string, 
 		return "", fmt.Errorf("setting up window %s in %s: %w", spec.Service, spec.Session, err)
 	}
 	return id, nil
+}
+
+// windowName is the literal name for spec's window. new-window expands
+// formats in -n, so "#" is doubled to keep "#{...}" from rendering.
+func windowName(spec app.WindowSpec) string {
+	name := spec.Name
+	if name == "" {
+		name = spec.Service
+	}
+	return strings.ReplaceAll(name, "#", "##")
 }
 
 // RespawnWindow restarts a window's command in place. -k kills whatever is

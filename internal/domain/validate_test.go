@@ -27,6 +27,7 @@ func TestValidateErrors(t *testing.T) {
 		{"reserved main", func(d *Definition) { d.Services[1].Ports["main"] = FixedPort(1) }, "reserved"},
 		{"dup link", func(d *Definition) { d.Services[0].Links = []LinkDef{{Label: "App", Target: "/"}} }, `link label "App" is already used`},
 		{"bad template", func(d *Definition) { d.Services[0].Run = "{{ .port" }, "template:"},
+		{"bad window name template", func(d *Definition) { d.Settings.WindowName = "{{ .service" }, "settings.window_name: template:"},
 		{"cycle", func(d *Definition) {
 			d.Services[0].Depends = []string{"web"}
 			d.Services[1].Depends = []string{redisSvc}

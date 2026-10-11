@@ -60,6 +60,9 @@ type Service struct {
 	Retries   int
 	Stop      StopSpec
 	LogFile   string
+	// Window is the tmux window name. It is only shown to people: svx
+	// finds windows by tag, never by name.
+	Window string
 }
 
 // Link is a rendered, absolute link.

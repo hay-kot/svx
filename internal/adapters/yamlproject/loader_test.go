@@ -27,6 +27,7 @@ const shopYAML = `
 project: shop
 settings:
   port_stride: 20
+  window_name: 'rcp.{{ .service.name }}'
 vars:
   db_name: 'shop_{{ snake .stack.name }}'
 env:
@@ -74,7 +75,8 @@ func TestLoadWalksUpAndKeepsOrder(t *testing.T) {
 	if got := strings.Join(def.ServiceNames(), ","); got != "web,redis,api,worker" {
 		t.Fatalf("order = %s", got)
 	}
-	if def.Project != "shop" || def.Settings.PortStride != 20 || def.Settings.MaxSlots != domain.DefaultMaxSlots || def.Settings.Logs {
+	if def.Project != "shop" || def.Settings.PortStride != 20 || def.Settings.MaxSlots != domain.DefaultMaxSlots || def.Settings.Logs ||
+		def.Settings.WindowName != "rcp.{{ .service.name }}" {
 		t.Fatalf("settings = %+v", def.Settings)
 	}
 

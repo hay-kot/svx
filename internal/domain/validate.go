@@ -49,6 +49,7 @@ func Validate(def Definition) ([]string, error) {
 		fail("services", "no services declared, add at least one under `services`")
 	}
 
+	checkTemplate(fail, windowNameKey, def.Settings.WindowName)
 	for name, v := range def.Vars {
 		checkTemplate(fail, "vars."+name, v)
 	}

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"text/template"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // SecretResolver turns a reference such as "env:TOKEN" or "file:/path" into
@@ -91,6 +93,7 @@ func (r *renderer) render() (Stack, error) {
 	for _, sd := range def.Services {
 		stack.Services = append(stack.Services, r.service(sd, base, funcs, stackEnv))
 	}
+	r.checkWindowsDistinct(stack.Services)
 
 	if len(r.errs) > 0 {
 		return Stack{}, errors.Join(r.errs...)
@@ -127,6 +130,7 @@ func (r *renderer) service(sd ServiceDef, base map[string]any, funcs template.Fu
 		Retries:   sd.Retries,
 		Stop:      sd.Stop,
 		Run:       r.exec(key+".run", sd.Run, data, funcs),
+		Window:    r.windowName(sd.Name, data, funcs),
 	}
 	if p, ok := ports[MainPort]; ok {
 		svc.URL = BaseURL(p)
@@ -173,20 +177,74 @@ func (r *renderer) service(sd ServiceDef, base map[string]any, funcs template.Fu
 }
 
 func (r *renderer) exec(key, text string, data map[string]any, funcs template.FuncMap) string {
+	out, err := execTemplate(key, text, data, funcs)
+	if err != nil {
+		r.fail(key, err)
+	}
+	return out
+}
+
+func execTemplate(key, text string, data map[string]any, funcs template.FuncMap) (string, error) {
 	if !strings.Contains(text, "{{") {
-		return text
+		return text, nil
 	}
 	t, err := template.New(key).Option("missingkey=error").Funcs(funcs).Parse(text)
 	if err != nil {
-		r.fail(key, err)
-		return ""
+		return "", err
 	}
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, data); err != nil {
-		r.fail(key, err)
-		return ""
+		return "", err
 	}
-	return buf.String()
+	return buf.String(), nil
+}
+
+const windowNameKey = "settings.window_name"
+
+// windowName renders the window name template for one service. The
+// template is shared, so errors name the service it failed for.
+func (r *renderer) windowName(service string, data map[string]any, funcs template.FuncMap) string {
+	text := r.in.Def.Settings.WindowName
+	if text == "" {
+		return service
+	}
+	name, err := execTemplate(windowNameKey, text, data, funcs)
+	if err == nil {
+		err = checkWindowName(name)
+	}
+	if err != nil {
+		r.fail(windowNameKey, fmt.Errorf("service %s: %w", service, err))
+	}
+	return name
+}
+
+// checkWindowName rejects names tmux refuses ("invalid window name") or
+// that would leave a window unlabelled. "." and ":" are fine: they only
+// matter in targets, and svx targets windows by id.
+func checkWindowName(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return errors.New("renders an empty window name")
+	}
+	if !utf8.ValidString(name) || strings.ContainsFunc(name, unicode.IsControl) {
+		return fmt.Errorf("window name %q has control characters or invalid UTF-8, which tmux rejects", name)
+	}
+	return nil
+}
+
+// checkWindowsDistinct rejects a template that gives two services the same
+// window name, such as one that leaves out .service.name.
+func (r *renderer) checkWindowsDistinct(services []Service) {
+	seen := map[string]string{}
+	for _, svc := range services {
+		if svc.Window == "" {
+			continue
+		}
+		if other, ok := seen[svc.Window]; ok {
+			r.fail(windowNameKey, fmt.Errorf("services %s and %s both render window name %q", other, svc.Name, svc.Window))
+			continue
+		}
+		seen[svc.Window] = svc.Name
+	}
 }
 
 func (r *renderer) injectedStack() map[string]string {

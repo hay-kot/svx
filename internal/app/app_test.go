@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"syscall"
@@ -292,6 +293,23 @@ func TestDownAllStopsEveryUpStack(t *testing.T) {
 		if ws, _ := f.mux.Windows(t.Context(), "work", ident(name).Key()); len(ws) != 0 {
 			t.Errorf("%s windows after down = %v", name, ws)
 		}
+	}
+}
+
+// The window name template reaches tmux as the window name, while the
+// service tag stays the bare service name.
+func TestUpNamesWindowsFromTemplate(t *testing.T) {
+	def := testDef(svc("api", 3000), svc("ui", 5000, "api"))
+	def.Settings.WindowName = "rcp.{{ .service.name }}"
+	a, f := newTestApp(t, def)
+	mustUp(t, a, UpRequest{Target: target("one")})
+
+	got := map[string]string{}
+	for _, spec := range f.mux.started {
+		got[spec.Service] = spec.Name
+	}
+	if want := map[string]string{"api": "rcp.api", "ui": "rcp.ui"}; !maps.Equal(got, want) {
+		t.Fatalf("window names by service = %v, want %v", got, want)
 	}
 }
 

@@ -263,6 +263,7 @@ func toDefinition(source string, fc fileConfig, root *yaml.Node) (domain.Definit
 			MaxSlots:   valueOr(fc.Settings.MaxSlots, domain.DefaultMaxSlots),
 			Logs:       valueOr(fc.Settings.Logs, false),
 			MenuBar:    valueOr(fc.Settings.MenuBar, true),
+			WindowName: fc.Settings.WindowName,
 		},
 		Vars:     orEmpty(fc.Vars),
 		Env:      orEmpty(fc.Env),
