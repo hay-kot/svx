@@ -204,9 +204,13 @@ func (a *App) loadStack(id domain.Identity) (domain.Stack, error) {
 		return domain.Stack{}, err
 	}
 	if !found {
-		return domain.Stack{}, usage(fmt.Errorf("no stack %s on record, start it with `svx up`", id))
+		return domain.Stack{}, noStack(id)
 	}
 	return stack, nil
+}
+
+func noStack(id domain.Identity) error {
+	return usage(fmt.Errorf("no stack %s on record, start it with `svx up`", id))
 }
 
 // startGrace covers the gap between `up` saving a record and tmux having the

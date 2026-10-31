@@ -284,7 +284,7 @@ func (a *App) launch(
 		spec.Window = window
 		err = a.Mux.RespawnWindow(ctx, spec)
 	} else {
-		_, err = a.Mux.StartWindow(ctx, spec)
+		err = a.startWindowOnce(ctx, stack, spec)
 	}
 	if err != nil {
 		a.emit(Event{Kind: EventFailed, Service: svc.Name, Detail: err.Error(), Elapsed: 0})
@@ -295,6 +295,25 @@ func (a *App) launch(
 		return Outcome{State: OutcomeStarted, Detail: "", Elapsed: 0}
 	}
 	return a.waitReady(ctx, stack, svc)
+}
+
+// startWindowOnce starts spec's window unless the service already has one.
+// Callers decide to start from a listing taken earlier, outside the lock, so
+// concurrent ups of one stack can all get here for the same service. A window
+// another up started counts as this one's: the caller still waits for it.
+func (a *App) startWindowOnce(ctx context.Context, stack domain.Stack, spec WindowSpec) error {
+	unlock, err := a.Store.Lock(ctx)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	_, found, err := a.window(ctx, stack, spec.Service)
+	if err != nil || found {
+		return err
+	}
+	_, err = a.Mux.StartWindow(ctx, spec)
+	return err
 }
 
 func (a *App) windowSpec(stack domain.Stack, svc domain.Service) WindowSpec {

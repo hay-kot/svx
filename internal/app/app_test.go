@@ -275,6 +275,20 @@ func TestDownKillsServiceThatIgnoresStopSignal(t *testing.T) {
 	}
 }
 
+func TestDownWithNoRecord(t *testing.T) {
+	a, _ := newTestApp(t, testDef(svc("api", 3000)))
+
+	res, err := a.Down(t.Context(), DownRequest{Target: checkoutTarget()})
+	if err != nil || len(res.Stopped) != 0 {
+		t.Errorf("down in a fresh checkout: stopped=%v err=%v, want nothing stopped and no error", res.Stopped, err)
+	}
+
+	_, err = a.Down(t.Context(), DownRequest{Target: target("typo")})
+	if ExitCode(err) != ExitUsage {
+		t.Errorf("down --name typo: err = %v, want a usage error", err)
+	}
+}
+
 func TestDownAllStopsEveryUpStack(t *testing.T) {
 	a, f := newTestApp(t, testDef(svc("api", 3000)))
 	mustUp(t, a, UpRequest{Target: target("one")})
@@ -520,6 +534,24 @@ func TestUpInNamedSessionFromOutsideTmux(t *testing.T) {
 	up := mustUp(t, a, UpRequest{Target: target("one"), Session: "dev"})
 	if up.Stack.Session != "dev" || !slices.Equal(f.mux.startedNames(), []string{"api"}) {
 		t.Fatalf("session=%q started=%v, want api started in dev", up.Stack.Session, f.mux.startedNames())
+	}
+}
+
+// Concurrent ups can both list no window for a service before either starts
+// one. The later launch has to find the earlier one's window.
+func TestLaunchKeepsWindowAnotherUpStarted(t *testing.T) {
+	a, f := newTestApp(t, testDef(svc("api", 8080)))
+	up := mustUp(t, a, UpRequest{Target: target("one")})
+	api, ok := up.Stack.Service("api")
+	if !ok {
+		t.Fatal("no service api")
+	}
+
+	if o := a.launch(t.Context(), up.Stack, api, "", true); o.State == OutcomeFailed {
+		t.Fatalf("launch: %+v", o)
+	}
+	if got := f.mux.startedNames(); !slices.Equal(got, []string{"api"}) {
+		t.Errorf("started = %v, want one api window", got)
 	}
 }
 
