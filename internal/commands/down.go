@@ -51,7 +51,7 @@ func (cmd *DownCmd) run(ctx context.Context, _ *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	if cmd.all && len(result.Stopped) == 0 {
+	if len(result.Stopped) == 0 {
 		_, _ = fmt.Fprintln(os.Stdout, "no stacks running")
 	}
 	return nil

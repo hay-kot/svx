@@ -147,7 +147,7 @@ projects: # svx.yaml files for repos that have none of their own
 | Command                    | What it does                                                                                            |
 | -------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `svx up [service...]`      | Start the stack or the named services plus dependencies. Safe to repeat. `--name`, `--no-wait`, `--session` |
-| `svx down`                 | Stop the stack. `--all`, `--purge`                                                                      |
+| `svx down`                 | Stop the stack. Safe to repeat. `--all`, `--purge`                                                      |
 | `svx status`               | Services, state, ports and links. `--json`                                                              |
 | `svx ls`                   | Every stack on the machine. `--json`                                                                    |
 | `svx restart [service...]` | Restart in place, keeping ports, in dependency order. `--all` restarts every started service            |

@@ -9,7 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -397,5 +399,35 @@ func TestUpOutsideTmuxWithSession(t *testing.T) {
 	}
 	if s := status(t, h, dir); s.Session != "work" || s.state("api") != "running" {
 		t.Fatalf("status = %+v, want api running in work", s)
+	}
+}
+
+// Two ups racing from outside tmux, such as a repeated action, must not give
+// a service a second window.
+func TestConcurrentUpStartsOneWindowPerService(t *testing.T) {
+	h := NewHarness(t)
+	dir := h.CopySample("checkout")
+	h.tmuxEnv = nil
+
+	var wg sync.WaitGroup
+	errs := make([]error, 4)
+	outs := make([]string, len(errs))
+	for i := range errs {
+		wg.Go(func() { outs[i], errs[i] = h.Run(dir, "up", "--session", "work") })
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("up %d: %v\n%s", i, err, outs[i])
+		}
+	}
+
+	out, err := h.Tmux("list-windows", "-a", "-F", "#{@svx_service}")
+	if err != nil {
+		t.Fatalf("list-windows: %v\n%s", err, out)
+	}
+	services := slices.Sorted(slices.Values(strings.Fields(out)))
+	if len(services) == 0 || !slices.Equal(services, slices.Compact(slices.Clone(services))) {
+		t.Errorf("window services = %v, want one window per service", services)
 	}
 }

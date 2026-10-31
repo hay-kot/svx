@@ -50,9 +50,17 @@ func (a *App) Down(ctx context.Context, req DownRequest) (DownResult, error) {
 		if err != nil {
 			return DownResult{}, err
 		}
-		stack, err := a.loadStack(r.id)
+		stack, found, err := a.Store.Load(r.id)
 		if err != nil {
 			return DownResult{}, err
+		}
+		if !found {
+			// A checkout that never started a stack is as stopped as one
+			// that did, but a mistyped --name must not read as a stop.
+			if req.Target.Stack == "" {
+				return DownResult{}, nil
+			}
+			return DownResult{}, noStack(r.id)
 		}
 		stacks = append(stacks, stack)
 	}
